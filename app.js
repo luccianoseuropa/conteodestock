@@ -625,7 +625,7 @@ function renderSummary() {
 async function shareCount(data, stockItems, wasteItems, isHistory) {
   const loc = sanitizeForFilename(data.location);
   const dateStr = fmtDateShort(data.finishedAt);
-  const filename = `${loc} - ${dateStr}.xlsx`;
+  const filename = `Stock - ${loc} - ${dateStr}.xlsx`;
 
   const header = ['Código', 'Producto', 'Categoría', 'Unidad de medida', 'Cantidad contada', 'Sucursal'];
   const toRows = (items) => items.map(p => [p.code, p.name, p.category, p.unit, Number(p.qty), data.location]);
