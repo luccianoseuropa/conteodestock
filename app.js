@@ -768,7 +768,12 @@ async function shareCount(data, stockItems, wasteItems, isHistory) {
     return;
   }
 
-  if (shared && !isHistory) finalizeIfNeeded(data);
+  if (shared && !isHistory) {
+    finalizeIfNeeded(data);
+    toast('Conteo finalizado');
+    state.screen = 'location';
+    render();
+  }
 }
 
 function finalizeIfNeeded(data) {
