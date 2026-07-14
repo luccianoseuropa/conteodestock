@@ -70,6 +70,19 @@ function countedItemsCount() {
   return Object.values(state.counts).filter(q => Number(q) > 0).length;
 }
 
+function formatQty(n) {
+  n = Number(n) || 0;
+  // Muestra con coma decimal (estilo AR/ES). Los enteros se muestran sin decimales.
+  return String(n).replace('.', ',');
+}
+
+function parseQtyInput(value) {
+  if (value === null || value === undefined) return 0;
+  const normalized = String(value).trim().replace(',', '.');
+  const n = parseFloat(normalized);
+  return isNaN(n) || n < 0 ? 0 : n;
+}
+
 function toast(msg) {
   let t = document.querySelector('.toast');
   if (!t) {
@@ -243,12 +256,12 @@ function renderCount() {
         listHtml += `
           <div class="product-row ${qty > 0 ? 'counted' : ''}" data-row="${p.code}">
             <div class="product-info">
-              <div class="code">#${p.code}</div>
+              <div class="code">#${p.code} · ${escapeHtml(p.unit)}</div>
               <div class="name">${escapeHtml(p.name)}</div>
             </div>
             <div class="qty-controls">
               <button class="qty-btn minus" data-minus="${p.code}">−</button>
-              <input class="qty-input" type="number" inputmode="decimal" min="0" step="any" value="${qty}" data-qty="${p.code}">
+              <input class="qty-input" type="text" inputmode="decimal" value="${formatQty(qty)}" data-qty="${p.code}">
               <button class="qty-btn plus" data-plus="${p.code}">+</button>
             </div>
           </div>`;
@@ -333,12 +346,12 @@ function renderCountListOnly() {
         listHtml += `
           <div class="product-row ${qty > 0 ? 'counted' : ''}" data-row="${p.code}">
             <div class="product-info">
-              <div class="code">#${p.code}</div>
+              <div class="code">#${p.code} · ${escapeHtml(p.unit)}</div>
               <div class="name">${escapeHtml(p.name)}</div>
             </div>
             <div class="qty-controls">
               <button class="qty-btn minus" data-minus="${p.code}">−</button>
-              <input class="qty-input" type="number" inputmode="decimal" min="0" step="any" value="${qty}" data-qty="${p.code}">
+              <input class="qty-input" type="text" inputmode="decimal" value="${formatQty(qty)}" data-qty="${p.code}">
               <button class="qty-btn plus" data-plus="${p.code}">+</button>
             </div>
           </div>`;
@@ -374,8 +387,7 @@ function changeQty(code, delta) {
 }
 
 function setQty(code, value) {
-  let n = parseFloat(value);
-  if (isNaN(n) || n < 0) n = 0;
+  const n = parseQtyInput(value);
   state.counts[code] = n;
   saveCurrent();
   updateRowUI(code, n);
@@ -386,7 +398,7 @@ function updateRowUI(code, qty) {
   if (!row) return;
   row.classList.toggle('counted', qty > 0);
   const input = row.querySelector('[data-qty]');
-  if (input && document.activeElement !== input) input.value = qty;
+  if (input && document.activeElement !== input) input.value = formatQty(qty);
   const counted = countedItemsCount();
   document.querySelector('.badge').textContent = `${counted}/${PRODUCTS.length}`;
   document.querySelector('.count-pill').textContent = `${counted} contados`;
@@ -406,8 +418,8 @@ function renderSummary() {
 
   const rowsHtml = items.map(p => `
     <div class="summary-row">
-      <div class="name">${escapeHtml(p.name)}<span class="cat">#${p.code} · ${escapeHtml(p.category)}</span></div>
-      <div class="qty">${p.qty}</div>
+      <div class="name">${escapeHtml(p.name)}<span class="cat">#${p.code} · ${escapeHtml(p.category)} · ${escapeHtml(p.unit)}</span></div>
+      <div class="qty">${formatQty(p.qty)}</div>
     </div>
   `).join('');
 
@@ -448,43 +460,45 @@ function renderSummary() {
 }
 
 async function shareCount(data, items, totalUnits, isHistory) {
-  const lines = [];
-  lines.push(`INVENTARIO - ${data.location}`);
-  lines.push(fmtDate(data.finishedAt));
-  lines.push(`${items.length} productos · ${totalUnits} unidades`);
-  lines.push('');
-  let lastCat = null;
-  items.forEach(p => {
-    if (p.category !== lastCat) {
-      lines.push(`-- ${p.category} --`);
-      lastCat = p.category;
-    }
-    lines.push(`${p.name} (#${p.code}): ${p.qty}`);
-  });
-  const text = lines.join('\n');
+  const filenameSafeLoc = data.location.replace(/[^\w\-]+/g, '_');
+  const dateStr = new Date(data.finishedAt).toISOString().slice(0, 10);
+  const filename = `Inventario_${filenameSafeLoc}_${dateStr}.xlsx`;
 
-  if (navigator.share) {
-    try {
+  // Columnas elegidas: Código, Producto, Categoría, Unidad de medida, Cantidad contada, Sucursal, Fecha del conteo
+  const header = ['Código', 'Producto', 'Categoría', 'Unidad de medida', 'Cantidad contada', 'Sucursal', 'Fecha del conteo'];
+  const fechaFmt = fmtDate(data.finishedAt);
+  const rows = items.map(p => [p.code, p.name, p.category, p.unit, Number(p.qty), data.location, fechaFmt]);
+
+  let shared = false;
+  try {
+    const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+    ws['!cols'] = [{ wch: 9 }, { wch: 34 }, { wch: 24 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 18 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Conteo');
+    const wbout = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+    const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const file = new File([blob], filename, { type: blob.type });
+
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
       await navigator.share({
         title: `Inventario ${data.location}`,
-        text: text,
+        text: `Conteo de ${data.location} - ${fechaFmt}`,
+        files: [file],
       });
-      if (!isHistory) finalizeIfNeeded(data);
-      return;
-    } catch (err) {
-      // user cancelled share sheet — do nothing further
-      if (err && err.name === 'AbortError') return;
+      shared = true;
+    } else {
+      // Descarga directa del Excel como respaldo
+      XLSX.writeFile(wb, filename);
+      toast('Tu navegador no permite compartir el archivo directo: se descargó el Excel.');
+      shared = true;
     }
+  } catch (err) {
+    if (err && err.name === 'AbortError') { return; } // el usuario cerró el menú de compartir
+    toast('No se pudo generar el Excel. Probá de nuevo.');
+    return;
   }
 
-  // Fallback: copy to clipboard
-  try {
-    await navigator.clipboard.writeText(text);
-    toast('Copiado al portapapeles (tu navegador no soporta compartir directo)');
-  } catch (e) {
-    toast('No se pudo compartir automáticamente. Copiá el resumen manualmente.');
-  }
-  if (!isHistory) finalizeIfNeeded(data);
+  if (shared && !isHistory) finalizeIfNeeded(data);
 }
 
 function finalizeIfNeeded(data) {
