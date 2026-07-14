@@ -21,8 +21,11 @@ const LOCATIONS = [
 //
 // Cambiá estas contraseñas antes de subir la app a producción.
 const USERS = [
-  { username: 'claudios', password: 'CAMBIAR-ESTA-CLAVE', canDelete: true },
-  { username: 'staff', password: 'lucciano2026', canDelete: false },
+  { username: 'batodesrets', password: '100393', canDelete: true },
+  { username: 'bautista', password: '100393', canDelete: false },
+  { username: 'agostina', password: '123456', canDelete: false },
+  { username: 'manuel', password: '123456', canDelete: false },
+  { username: 'simon', password: '123456', canDelete: false },
 ];
 
 if (typeof module !== 'undefined') { module.exports = { LOCATIONS, USERS }; }

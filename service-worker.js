@@ -1,4 +1,4 @@
-const CACHE_NAME = 'inventario-cache-v1';
+const CACHE_NAME = 'inventario-cache-v2';
 const FILES_TO_CACHE = [
   './',
   './index.html',
@@ -9,6 +9,8 @@ const FILES_TO_CACHE = [
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
+  './icons/icon-maskable-192.png',
+  './icons/icon-maskable-512.png',
 ];
 
 self.addEventListener('install', (event) => {

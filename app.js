@@ -1,6 +1,8 @@
 /* ============================================================
    Conteo de Inventario - lógica principal
-   Pantallas: location -> type (Stock/Desperdicio) -> count -> summary
+   Pantallas: login -> location -> count (stock) -> askWaste -> count (desperdicio) -> summary
+   El Stock y el Desperdicio comparten el mismo listado de productos
+   y terminan en UN SOLO Excel con dos pestañas: "Stock" y "Desperdicio".
    ============================================================ */
 
 const STORAGE_KEY = 'inv_current_count';
@@ -8,12 +10,13 @@ const HISTORY_KEY = 'inv_history';
 const SESSION_KEY = 'inv_logged_user';
 
 let state = {
-  screen: 'login',     // login | location | type | count | summary
+  screen: 'login',     // login | location | count | askWaste | summary
   currentUser: null,
   location: null,
-  type: null,           // 'Stock' | 'Desperdicio'
+  stage: 'stock',       // 'stock' | 'desperdicio' -- qué se está contando ahora mismo
   startedAt: null,
-  counts: {},          // { code: qty }
+  stockCounts: {},       // { code: qty }
+  wasteCounts: {},        // { code: qty }
   search: '',
   activeCategory: 'Todas',
   viewingHistoryId: null, // when set, summary shows a read-only past count
@@ -24,12 +27,13 @@ const app = document.getElementById('app');
 /* ---------------- Persistence ---------------- */
 
 function saveCurrent() {
-  if (!state.location || !state.type) return;
+  if (!state.location) return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
     location: state.location,
-    type: state.type,
+    stage: state.stage,
     startedAt: state.startedAt,
-    counts: state.counts,
+    stockCounts: state.stockCounts,
+    wasteCounts: state.wasteCounts,
   }));
 }
 
@@ -109,8 +113,13 @@ function escapeHtml(str) {
   }[c]));
 }
 
+// Devuelve el objeto de conteo activo según lo que se está contando ahora (stock o desperdicio)
+function activeCounts() {
+  return state.stage === 'desperdicio' ? state.wasteCounts : state.stockCounts;
+}
+
 function countedItemsCount() {
-  return Object.values(state.counts).filter(q => Number(q) > 0).length;
+  return Object.values(activeCounts()).filter(q => Number(q) > 0).length;
 }
 
 function formatQty(n) {
@@ -144,8 +153,8 @@ function toast(msg) {
 function render() {
   if (state.screen === 'login') return renderLogin();
   if (state.screen === 'location') return renderLocation();
-  if (state.screen === 'type') return renderType();
   if (state.screen === 'count') return renderCount();
+  if (state.screen === 'askWaste') return renderAskWaste();
   if (state.screen === 'summary') return renderSummary();
 }
 
@@ -202,13 +211,14 @@ function renderLocation() {
   const history = loadHistory();
 
   let resumeHtml = '';
-  if (current && current.location && current.type) {
-    const n = Object.values(current.counts || {}).filter(q => Number(q) > 0).length;
+  if (current && current.location) {
+    const nStock = Object.values(current.stockCounts || {}).filter(q => Number(q) > 0).length;
+    const nWaste = Object.values(current.wasteCounts || {}).filter(q => Number(q) > 0).length;
     resumeHtml = `
       <div class="resume-card" id="resumeCard">
         <div class="info">
-          <b>${escapeHtml(current.location)} · ${escapeHtml(current.type)}</b>
-          <span>Conteo en curso · ${n} producto${n === 1 ? '' : 's'} contados</span>
+          <b>${escapeHtml(current.location)}</b>
+          <span>Conteo en curso · ${nStock} de stock${nWaste ? `, ${nWaste} de desperdicio` : ''}</span>
         </div>
         <span class="go">Continuar →</span>
       </div>`;
@@ -223,8 +233,8 @@ function renderLocation() {
         ${history.slice(0, 8).map((h, i) => `
           <div class="history-item">
             <div class="info">
-              <b>${escapeHtml(h.location)} · ${escapeHtml(h.type || 'Stock')}</b>
-              <span>${fmtDate(h.finishedAt)} · ${h.itemCount} productos</span>
+              <b>${escapeHtml(h.location)}</b>
+              <span>${fmtDate(h.finishedAt)} · ${h.itemCountStock} stock${h.itemCountWaste ? ` · ${h.itemCountWaste} desperdicio` : ''}</span>
             </div>
             <div style="display:flex;gap:4px;">
               <button data-history-index="${i}">Ver</button>
@@ -267,9 +277,10 @@ function renderLocation() {
   if (resumeCard) {
     resumeCard.onclick = () => {
       state.location = current.location;
-      state.type = current.type;
+      state.stage = current.stage || 'stock';
       state.startedAt = current.startedAt;
-      state.counts = current.counts || {};
+      state.stockCounts = current.stockCounts || {};
+      state.wasteCounts = current.wasteCounts || {};
       state.search = '';
       state.activeCategory = 'Todas';
       state.screen = 'count';
@@ -287,7 +298,14 @@ function renderLocation() {
   document.querySelectorAll('[data-loc]').forEach(btn => {
     btn.onclick = () => {
       state.location = btn.getAttribute('data-loc');
-      state.screen = 'type';
+      state.stage = 'stock';
+      state.startedAt = new Date().toISOString();
+      state.stockCounts = {};
+      state.wasteCounts = {};
+      state.search = '';
+      state.activeCategory = 'Todas';
+      saveCurrent();
+      state.screen = 'count';
       render();
     };
   });
@@ -308,7 +326,7 @@ function renderLocation() {
       e.stopPropagation();
       const idx = Number(btn.getAttribute('data-delete-index'));
       const entry = history[idx];
-      if (confirm(`¿Borrar el conteo de ${entry.location} (${entry.type || 'Stock'})? Esta acción no se puede deshacer.`)) {
+      if (confirm(`¿Borrar el conteo de ${entry.location}? Esta acción no se puede deshacer.`)) {
         deleteHistoryEntry(idx);
         toast('Conteo borrado');
         render();
@@ -317,44 +335,7 @@ function renderLocation() {
   });
 }
 
-/* ---------------- Type picker (Stock / Desperdicio) ---------------- */
-
-function renderType() {
-  app.innerHTML = `
-    <div class="topbar">
-      <button class="icon-btn" id="backBtn">←</button>
-      <h1>${escapeHtml(state.location)}</h1>
-      <span style="width:32px"></span>
-    </div>
-    <div class="home">
-      <div class="home-hero">
-        <span class="emoji">🧾</span>
-        <h2>¿Qué querés contar?</h2>
-        <p>Usa el mismo listado de productos</p>
-      </div>
-      <button class="btn-primary" id="stockBtn">📦 Contar Stock</button>
-      <button class="btn-secondary" id="wasteBtn">🗑️ Contar Desperdicio</button>
-    </div>
-  `;
-
-  document.getElementById('backBtn').onclick = () => { state.screen = 'location'; render(); };
-
-  const start = (type) => {
-    state.type = type;
-    state.startedAt = new Date().toISOString();
-    state.counts = {};
-    state.search = '';
-    state.activeCategory = 'Todas';
-    saveCurrent();
-    state.screen = 'count';
-    render();
-  };
-
-  document.getElementById('stockBtn').onclick = () => start('Stock');
-  document.getElementById('wasteBtn').onclick = () => start('Desperdicio');
-}
-
-/* ---------------- Count screen ---------------- */
+/* ---------------- Count screen (usado para stock y para desperdicio) ---------------- */
 
 function getFilteredProducts() {
   const term = state.search.trim().toLowerCase();
@@ -366,6 +347,7 @@ function getFilteredProducts() {
 }
 
 function buildProductListHtml(filtered) {
+  const counts = activeCounts();
   const grouped = {};
   filtered.forEach(p => {
     if (!grouped[p.category]) grouped[p.category] = [];
@@ -380,7 +362,7 @@ function buildProductListHtml(filtered) {
     if (!grouped[cat]) return;
     listHtml += `<div class="cat-heading">${escapeHtml(cat)}</div>`;
     grouped[cat].forEach(p => {
-      const qty = state.counts[p.code] || 0;
+      const qty = counts[p.code] || 0;
       listHtml += `
         <div class="product-row ${qty > 0 ? 'counted' : ''}" data-row="${p.code}">
           <div class="product-info">
@@ -402,13 +384,14 @@ function renderCount() {
   const filtered = getFilteredProducts();
   const counted = countedItemsCount();
   const listHtml = buildProductListHtml(filtered);
+  const isWaste = state.stage === 'desperdicio';
 
   app.innerHTML = `
     <div class="topbar">
       <button class="icon-btn" id="backBtn">←</button>
       <div style="text-align:center;">
         <h1>${escapeHtml(state.location)}</h1>
-        <div class="sub">${escapeHtml(state.type)} · guardado automático</div>
+        <div class="sub">${isWaste ? 'Contando Desperdicio' : 'Contando Stock'} · guardado automático</div>
       </div>
       <span class="badge">${counted}/${PRODUCTS.length}</span>
     </div>
@@ -425,11 +408,15 @@ function renderCount() {
     <div class="product-list">${listHtml}</div>
     <div class="footer-bar">
       <span class="count-pill">${counted} contados</span>
-      <button class="btn-primary" id="finishBtn">Finalizar conteo</button>
+      <button class="btn-primary" id="finishBtn">${isWaste ? 'Finalizar desperdicio' : 'Finalizar conteo'}</button>
     </div>
   `;
 
-  document.getElementById('backBtn').onclick = () => { state.screen = 'location'; render(); };
+  document.getElementById('backBtn').onclick = () => {
+    if (isWaste) { state.screen = 'askWaste'; }
+    else { state.screen = 'location'; }
+    render();
+  };
 
   const searchInput = document.getElementById('searchInput');
   searchInput.oninput = (e) => {
@@ -456,9 +443,14 @@ function renderCount() {
       toast('Contá al menos un producto antes de finalizar');
       return;
     }
-    state.screen = 'summary';
-    state.viewingHistoryId = null;
-    render();
+    if (isWaste) {
+      state.screen = 'summary';
+      state.viewingHistoryId = null;
+      render();
+    } else {
+      state.screen = 'askWaste';
+      render();
+    }
   };
 }
 
@@ -487,17 +479,18 @@ function attachCountRowHandlers() {
 }
 
 function changeQty(code, delta) {
-  const current = Number(state.counts[code] || 0);
+  const counts = activeCounts();
+  const current = Number(counts[code] || 0);
   let next = current + delta;
   if (next < 0) next = 0;
-  state.counts[code] = next;
+  counts[code] = next;
   saveCurrent();
   updateRowUI(code, next);
 }
 
 function setQty(code, value) {
   const n = parseQtyInput(value);
-  state.counts[code] = n;
+  activeCounts()[code] = n;
   saveCurrent();
   updateRowUI(code, n);
 }
@@ -513,26 +506,79 @@ function updateRowUI(code, qty) {
   document.querySelector('.count-pill').textContent = `${counted} contados`;
 }
 
+/* ---------------- ¿Tuviste desperdicios? ---------------- */
+
+function renderAskWaste() {
+  const nStock = countedItemsCount(); // en este punto state.stage sigue en 'stock'
+  app.innerHTML = `
+    <div class="topbar">
+      <button class="icon-btn" id="backBtn">←</button>
+      <h1>${escapeHtml(state.location)}</h1>
+      <span style="width:32px"></span>
+    </div>
+    <div class="home">
+      <div class="home-hero">
+        <span class="emoji">🗑️</span>
+        <h2>¿Tuviste desperdicios?</h2>
+        <p>Ya contaste ${nStock} producto${nStock === 1 ? '' : 's'} de stock</p>
+      </div>
+      <button class="btn-primary" id="wasteYes">Sí, contar desperdicio</button>
+      <button class="btn-secondary" id="wasteNo">No, generar Excel</button>
+    </div>
+  `;
+
+  document.getElementById('backBtn').onclick = () => { state.screen = 'count'; state.stage = 'stock'; render(); };
+
+  document.getElementById('wasteYes').onclick = () => {
+    state.stage = 'desperdicio';
+    state.search = '';
+    state.activeCategory = 'Todas';
+    saveCurrent();
+    state.screen = 'count';
+    render();
+  };
+
+  document.getElementById('wasteNo').onclick = () => {
+    state.screen = 'summary';
+    state.viewingHistoryId = null;
+    render();
+  };
+}
+
 /* ---------------- Summary screen ---------------- */
 
 function renderSummary() {
   const isHistory = !!state.viewingHistoryId;
   const data = isHistory
     ? state.viewingHistoryId
-    : { location: state.location, type: state.type, counts: state.counts, finishedAt: new Date().toISOString() };
+    : {
+        location: state.location,
+        stockCounts: state.stockCounts,
+        wasteCounts: state.wasteCounts,
+        finishedAt: new Date().toISOString(),
+      };
 
-  const items = PRODUCTS
-    .filter(p => Number(data.counts[p.code] || 0) > 0)
-    .map(p => ({ ...p, qty: data.counts[p.code] }));
+  const stockItems = PRODUCTS
+    .filter(p => Number((data.stockCounts || {})[p.code] || 0) > 0)
+    .map(p => ({ ...p, qty: data.stockCounts[p.code] }));
+  const wasteItems = PRODUCTS
+    .filter(p => Number((data.wasteCounts || {})[p.code] || 0) > 0)
+    .map(p => ({ ...p, qty: data.wasteCounts[p.code] }));
 
-  const totalUnits = items.reduce((sum, p) => sum + Number(p.qty), 0);
+  const totalStockUnits = stockItems.reduce((sum, p) => sum + Number(p.qty), 0);
+  const hasWaste = wasteItems.length > 0;
 
-  const rowsHtml = items.map(p => `
+  const buildRows = (items) => items.map(p => `
     <div class="summary-row">
       <div class="name">${escapeHtml(p.name)}<span class="cat">#${p.code} · ${escapeHtml(p.category)} · ${escapeHtml(p.unit)}</span></div>
       <div class="qty">${formatQty(p.qty)}</div>
     </div>
   `).join('');
+
+  const wasteBlockHtml = hasWaste ? `
+    <div class="section-label" style="margin-top:18px;">Desperdicio</div>
+    <div class="summary-table">${buildRows(wasteItems)}</div>
+  ` : '';
 
   app.innerHTML = `
     <div class="topbar">
@@ -543,14 +589,16 @@ function renderSummary() {
     <div class="summary">
       <div class="summary-hero">
         <span class="check">✅</span>
-        <h2>${escapeHtml(data.location)} · ${escapeHtml(data.type || 'Stock')}</h2>
+        <h2>${escapeHtml(data.location)}</h2>
         <p>${fmtDate(data.finishedAt)}</p>
       </div>
       <div class="summary-stats">
-        <div class="stat-card"><div class="num">${items.length}</div><div class="lbl">Productos</div></div>
-        <div class="stat-card"><div class="num">${totalUnits}</div><div class="lbl">Unidades totales</div></div>
+        <div class="stat-card"><div class="num">${stockItems.length}</div><div class="lbl">Productos (Stock)</div></div>
+        <div class="stat-card"><div class="num">${totalStockUnits}</div><div class="lbl">Unidades (Stock)</div></div>
       </div>
-      <div class="summary-table">${rowsHtml || '<div class="empty-hint">No hay productos contados.</div>'}</div>
+      <div class="section-label">Stock</div>
+      <div class="summary-table">${buildRows(stockItems) || '<div class="empty-hint">No hay productos contados.</div>'}</div>
+      ${wasteBlockHtml}
     </div>
     <div class="footer-bar">
       ${isHistory ? '' : '<button class="btn-secondary" id="editBtn" style="flex:1;">Seguir contando</button>'}
@@ -560,33 +608,42 @@ function renderSummary() {
 
   document.getElementById('backBtn').onclick = () => {
     if (isHistory) { state.viewingHistoryId = null; state.screen = 'location'; }
-    else { state.screen = 'count'; }
+    else { state.screen = hasWaste ? 'count' : 'askWaste'; if (hasWaste) state.stage = 'desperdicio'; }
     render();
   };
 
   const editBtn = document.getElementById('editBtn');
-  if (editBtn) editBtn.onclick = () => { state.screen = 'count'; render(); };
+  if (editBtn) editBtn.onclick = () => {
+    state.screen = 'count';
+    state.stage = hasWaste ? 'desperdicio' : 'stock';
+    render();
+  };
 
-  document.getElementById('shareBtn').onclick = () => shareCount(data, items, totalUnits, isHistory);
+  document.getElementById('shareBtn').onclick = () => shareCount(data, stockItems, wasteItems, isHistory);
 }
 
-async function shareCount(data, items, totalUnits, isHistory) {
+async function shareCount(data, stockItems, wasteItems, isHistory) {
   const loc = sanitizeForFilename(data.location);
-  const tipo = sanitizeForFilename(data.type || 'Stock');
   const dateStr = fmtDateShort(data.finishedAt);
-  const filename = `${loc} - ${tipo} - ${dateStr}.xlsx`;
+  const filename = `${loc} - ${dateStr}.xlsx`;
 
-  // Columnas: Código, Producto, Categoría, Unidad de medida, Cantidad contada, Sucursal
-  // (la fecha ya queda registrada en el nombre del archivo)
   const header = ['Código', 'Producto', 'Categoría', 'Unidad de medida', 'Cantidad contada', 'Sucursal'];
-  const rows = items.map(p => [p.code, p.name, p.category, p.unit, Number(p.qty), data.location]);
+  const toRows = (items) => items.map(p => [p.code, p.name, p.category, p.unit, Number(p.qty), data.location]);
 
   let shared = false;
   try {
-    const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-    ws['!cols'] = [{ wch: 9 }, { wch: 34 }, { wch: 24 }, { wch: 14 }, { wch: 16 }, { wch: 16 }];
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, tipo.slice(0, 28));
+
+    const wsStock = XLSX.utils.aoa_to_sheet([header, ...toRows(stockItems)]);
+    wsStock['!cols'] = [{ wch: 9 }, { wch: 34 }, { wch: 24 }, { wch: 14 }, { wch: 16 }, { wch: 16 }];
+    XLSX.utils.book_append_sheet(wb, wsStock, 'Stock');
+
+    if (wasteItems.length > 0) {
+      const wsWaste = XLSX.utils.aoa_to_sheet([header, ...toRows(wasteItems)]);
+      wsWaste['!cols'] = [{ wch: 9 }, { wch: 34 }, { wch: 24 }, { wch: 14 }, { wch: 16 }, { wch: 16 }];
+      XLSX.utils.book_append_sheet(wb, wsWaste, 'Desperdicio');
+    }
+
     const wbout = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
     const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const file = new File([blob], filename, { type: blob.type });
@@ -594,18 +651,17 @@ async function shareCount(data, items, totalUnits, isHistory) {
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       await navigator.share({
         title: filename,
-        text: `Conteo de ${tipo} - ${data.location}`,
+        text: `Conteo de ${data.location}${wasteItems.length ? ' (Stock + Desperdicio)' : ' (Stock)'}`,
         files: [file],
       });
       shared = true;
     } else {
-      // Descarga directa del Excel como respaldo
       XLSX.writeFile(wb, filename);
       toast('Tu navegador no permite compartir el archivo directo: se descargó el Excel.');
       shared = true;
     }
   } catch (err) {
-    if (err && err.name === 'AbortError') { return; } // el usuario cerró el menú de compartir
+    if (err && err.name === 'AbortError') { return; }
     toast('No se pudo generar el Excel. Probá de nuevo.');
     return;
   }
@@ -614,15 +670,15 @@ async function shareCount(data, items, totalUnits, isHistory) {
 }
 
 function finalizeIfNeeded(data) {
-  // Save to history and clear the in-progress count, only once.
   if (state._finalized) return;
   state._finalized = true;
   saveHistory({
     location: data.location,
-    type: data.type,
     finishedAt: data.finishedAt,
-    counts: data.counts,
-    itemCount: Object.values(data.counts).filter(q => Number(q) > 0).length,
+    stockCounts: data.stockCounts,
+    wasteCounts: data.wasteCounts,
+    itemCountStock: Object.values(data.stockCounts || {}).filter(q => Number(q) > 0).length,
+    itemCountWaste: Object.values(data.wasteCounts || {}).filter(q => Number(q) > 0).length,
   });
   clearCurrent();
 }

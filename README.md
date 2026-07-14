@@ -1,55 +1,54 @@
 # Conteo de Inventario — Lucciano's
 
-App web (PWA) para contar stock o desperdicio desde el celular, sucursal por sucursal.
+App web (PWA) para contar stock (y desperdicio, si hubo) desde el celular, sucursal por sucursal.
 
 ## Qué incluye (archivos de esta actualización)
 
-- `index.html` — pantalla principal (título/nombre "Stock")
-- `app.js` — lógica de la app (login, sesión, conteo, borrado con permisos, exportar a Excel)
-- `config.js` — sucursales **+ usuarios habilitados** (nuevo)
-- `manifest.json` — nombre de la app ahora es **"Stock"**
-- `icons/` — ícono en negro con "Lucciano's" en blanco *(placeholder, ver nota abajo)*
+- `app.js` — lógica de la app (login, flujo Stock → ¿Desperdicio? → Excel combinado)
+- `config.js` — usuarios reales cargados (nuevo)
 
-*(`style.css`, `products.js` y `service-worker.js` no cambiaron — no hace falta volver a subirlos)*
+*(el resto de los archivos — `index.html`, `style.css`, `products.js`, `manifest.json`, `service-worker.js`, `icons/` — no cambiaron en esta actualización, no hace falta volver a subirlos)*
 
-## Novedades de esta versión
+## Usuarios cargados
 
-### 1. Borrar conteos — solo vos
-En "Conteos finalizados" ahora hay un botón **Borrar** al lado de "Ver", pero solo lo ve el usuario con permiso (`claudios`). El resto del personal solo puede ver, no borrar. Pide confirmación antes de borrar.
-
-### 2. Login con usuario y contraseña
-Al abrir la app por primera vez, pide usuario y contraseña. Una vez que entrás, se guarda la sesión en el celular (no te la vuelve a pedir la próxima vez) hasta que toques el botón de cerrar sesión (⎋, arriba a la derecha).
-
-**Usuarios configurados ahora mismo** (en `config.js`):
-| Usuario | Contraseña | Puede borrar |
+| Usuario | Contraseña | Puede borrar conteos |
 |---|---|---|
-| `claudios` | `CAMBIAR-ESTA-CLAVE` | ✅ Sí |
-| `staff` | `lucciano2026` | ❌ No |
+| `batodesrets` | `100393` | ✅ Sí |
+| `bautista` | `100393` | ❌ No |
+| `agostina` | `123456` | ❌ No |
+| `manuel` | `123456` | ❌ No |
+| `simon` | `123456` | ❌ No |
 
-**⚠️ Importante sobre seguridad:** esta app vive en GitHub Pages, un hosting de archivos estáticos, sin servidor propio. Este login es un control simple para que el personal no borre cosas por error o gente sin usuario no entre a la app — **no es seguridad real**. Cualquiera que sepa inspeccionar el código fuente de la página puede leer las contraseñas en `config.js`. Si más adelante necesitás protección de verdad (por ejemplo, si vas a manejar datos más sensibles o querés evitar que alguien motivado entre igual), lo correcto sería un backend con autenticación de verdad — avisame si querés que lo charlemos.
+Para agregar, sacar o cambiar contraseñas más adelante: abrís `config.js` en GitHub, editás la lista `USERS` y hacés commit. Mismo recordatorio de siempre: esto es un control simple del lado del cliente (no hay servidor), no reemplaza una seguridad real.
 
-**Cambiá la contraseña de `claudios`** en `config.js` antes de subir esto (ahora mismo dice `CAMBIAR-ESTA-CLAVE` a propósito, para que la reemplaces vos).
+## Nuevo flujo de conteo
 
-### 3. Ícono e identidad
-- Ícono ahora con el **logo real de Lucciano's** que nos pasaste, centrado sobre fondo negro redondeado.
-- Nombre de la app al instalarla en el celular: **"Stock"**.
+Ya no se elige "Stock" o "Desperdicio" al principio. Ahora es todo un solo recorrido:
+
+1. **Login** → usuario y contraseña.
+2. **Elegís la sucursal**.
+3. **Contás el Stock** (todo el listado de productos).
+4. Al tocar **Finalizar conteo**, te pregunta: **"¿Tuviste desperdicios?"**
+   - **No** → se genera directo el Excel, listo para compartir.
+   - **Sí** → pasás a contar el desperdicio (mismo listado de productos) y al finalizar se genera el Excel.
+5. El Excel exportado es **un solo archivo** (`Sucursal - Fecha.xlsx`) con:
+   - Pestaña **"Stock"** (siempre)
+   - Pestaña **"Desperdicio"** (solo si contaste desperdicio)
 
 ## Cómo subir esto a GitHub
 
-Solo reemplazá estos 5 archivos/carpeta (mismo nombre, GitHub te va a avisar que ya existen):
+Solo hace falta reemplazar 2 archivos:
 
 1. `https://github.com/luccianoseuropa/conteodestock/upload/main`
-2. Arrastrá: `index.html`, `app.js`, `config.js`, `manifest.json`, carpeta `icons`
+2. Arrastrá `app.js` y `config.js`
 3. Confirmá el reemplazo → Commit changes.
 
 ## Cómo se usa (flujo actual)
 
-1. Abrís la app → **login** (usuario y contraseña).
-2. Elegís **sucursal**.
-3. Elegís **Contar Stock** o **Contar Desperdicio**.
-4. Contás productos (buscador, categorías, `−`/`+`, coma decimal).
-5. **Finalizar conteo** → **Compartir** → se genera el Excel (`Sucursal - Stock/Desperdicio - Fecha.xlsx`).
-6. Desde la pantalla de inicio, en "Conteos finalizados", `claudios` puede borrar cualquier conteo; el resto del personal solo puede verlos.
-
-
-
+1. Abrís la app → login.
+2. Elegís sucursal.
+3. Contás stock (buscador, categorías, `−`/`+`, coma decimal).
+4. **Finalizar conteo** → "¿Tuviste desperdicios?" → Sí/No.
+5. Si contaste desperdicio, lo contás igual que el stock y finalizás.
+6. **Compartir** → se genera el Excel con las pestañas correspondientes y se abre el menú del celular para enviarlo.
+7. En "Conteos finalizados", `batodesrets` puede borrar cualquier conteo; el resto solo puede verlos.
