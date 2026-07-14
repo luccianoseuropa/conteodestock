@@ -177,6 +177,28 @@ function toast(msg) {
   t._timer = setTimeout(() => t.classList.remove('show'), 1800);
 }
 
+/* ---------------- Modo oscuro / claro ---------------- */
+const THEME_KEY = 'inv_theme';
+
+function getTheme() {
+  return localStorage.getItem(THEME_KEY) || 'light';
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem(THEME_KEY, theme);
+}
+
+function toggleTheme() {
+  applyTheme(getTheme() === 'dark' ? 'light' : 'dark');
+  render();
+}
+
+function themeToggleButtonHtml() {
+  const isDark = getTheme() === 'dark';
+  return `<button class="icon-btn" id="themeToggleBtn" title="Cambiar modo">${isDark ? '☀️' : '🌙'}</button>`;
+}
+
 /* ---------------- Render router ---------------- */
 
 function render() {
@@ -197,6 +219,7 @@ function renderLogin() {
         <h1>📋 Conteo de Inventario</h1>
         <div class="sub">Lucciano's</div>
       </div>
+      ${themeToggleButtonHtml()}
     </div>
     <div class="home">
       <div class="home-hero">
@@ -213,6 +236,8 @@ function renderLogin() {
       <button class="btn-primary" id="loginBtn">Ingresar</button>
     </div>
   `;
+
+  document.getElementById('themeToggleBtn').onclick = toggleTheme;
 
   const doLogin = () => {
     const user = document.getElementById('loginUser').value.trim();
@@ -285,6 +310,7 @@ function renderLocation() {
         <div class="sub">Lucciano's · ${escapeHtml(state.currentUser || '')}</div>
       </div>
       <button class="icon-btn" id="changePwBtn" title="Cambiar contraseña">🔑</button>
+      ${themeToggleButtonHtml()}
       <button class="icon-btn" id="logoutBtn" title="Cerrar sesión">⎋</button>
     </div>
     <div class="home">
@@ -324,6 +350,8 @@ function renderLocation() {
     state.screen = 'changePassword';
     render();
   };
+
+  document.getElementById('themeToggleBtn').onclick = toggleTheme;
 
   document.getElementById('logoutBtn').onclick = () => {
     clearSession();
@@ -800,6 +828,8 @@ function finalizeIfNeeded(data) {
     state.screen = 'location';
   }
 })();
+
+applyTheme(getTheme());
 
 render();
 

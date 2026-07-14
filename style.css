@@ -8,9 +8,23 @@
   --line:#EFE1DF;
   --white:#FFFFFF;
   --danger:#D64545;
+  --counted-bg:#F6FAF1;
   --radius:14px;
   --mono: 'SF Mono', 'Roboto Mono', Consolas, monospace;
   --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+:root[data-theme="dark"]{
+  --pink:#2A2A2A;
+  --pink-dark:#000000;
+  --pistachio:#8FC46A;
+  --cream:#121212;
+  --ink:#F2EDEA;
+  --ink-soft:#B0A8A8;
+  --line:#333333;
+  --white:#1E1E1E;
+  --danger:#FF6B6B;
+  --counted-bg:#20301D;
 }
 
 *{box-sizing:border-box;}
@@ -275,7 +289,7 @@ input{font-family:inherit;}
 }
 .product-row.counted{
   border-color:var(--pistachio);
-  background:#F6FAF1;
+  background:var(--counted-bg);
 }
 .product-info{flex:1;min-width:0;}
 .product-info .code{
