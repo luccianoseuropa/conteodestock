@@ -1,7 +1,7 @@
 {
-  "name": "Conteo de Inventario - Lucciano's",
-  "short_name": "Inventario",
-  "description": "App para contar inventario por sucursal",
+  "name": "Stock",
+  "short_name": "Stock",
+  "description": "App para contar stock o desperdicio por sucursal - Lucciano's",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

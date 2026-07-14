@@ -1,48 +1,55 @@
 # Conteo de Inventario — Lucciano's
 
-App web (PWA) para contar inventario o desperdicio desde el celular, sucursal por sucursal.
+App web (PWA) para contar stock o desperdicio desde el celular, sucursal por sucursal.
 
-## Qué incluye
+## Qué incluye (archivos de esta actualización)
 
-- `index.html` — pantalla principal (incluye la librería SheetJS para generar el Excel)
-- `style.css` — estilos (acento en negro)
-- `app.js` — lógica de la app (pantallas, conteo, guardado, exportar a Excel)
-- `products.js` — listado de **371 productos** con código, categoría y unidad de medida *(sin cambios en esta versión)*
-- `config.js` — sucursales: BCN 1 - Space, BCN 2 - Moon, Madrid, Roma *(sin cambios en esta versión)*
-- `manifest.json` + `service-worker.js` — instalación y funcionamiento offline
-- `icons/` — ícono de la app (ahora en negro)
+- `index.html` — pantalla principal (título/nombre "Stock")
+- `app.js` — lógica de la app (login, sesión, conteo, borrado con permisos, exportar a Excel)
+- `config.js` — sucursales **+ usuarios habilitados** (nuevo)
+- `manifest.json` — nombre de la app ahora es **"Stock"**
+- `icons/` — ícono en negro con "Lucciano's" en blanco *(placeholder, ver nota abajo)*
+
+*(`style.css`, `products.js` y `service-worker.js` no cambiaron — no hace falta volver a subirlos)*
 
 ## Novedades de esta versión
 
-1. **Categorías con scroll automático**: al elegir una categoría en la barra de arriba, la barra se desliza sola para que sigas viendo las opciones siguientes.
-2. **La página ya no salta al principio** al elegir una categoría — se actualiza solo la lista de productos.
-3. **Excel sin columna de fecha**: la fecha ya queda en el nombre del archivo, no hace falta repetirla en una columna.
-4. **Nuevo flujo de uso**:
-   - Al abrir la app, lo primero que aparece es elegir **sucursal**.
-   - Después elegís **Contar Stock** o **Contar Desperdicio** (mismo listado de productos para ambos).
-   - El archivo exportado se llama: `Sucursal - Stock o Desperdicio - Fecha.xlsx` (ej: `BCN 1 - Space - Stock - 14-07-2026.xlsx`).
-5. **Color**: se cambió el rosa por negro en toda la app (barra superior, botones, ícono).
+### 1. Borrar conteos — solo vos
+En "Conteos finalizados" ahora hay un botón **Borrar** al lado de "Ver", pero solo lo ve el usuario con permiso (`claudios`). El resto del personal solo puede ver, no borrar. Pide confirmación antes de borrar.
 
-## Cómo subirlo a GitHub
+### 2. Login con usuario y contraseña
+Al abrir la app por primera vez, pide usuario y contraseña. Una vez que entrás, se guarda la sesión en el celular (no te la vuelve a pedir la próxima vez) hasta que toques el botón de cerrar sesión (⎋, arriba a la derecha).
 
-Como ya tenés el repo `conteodestock` creado, solo hace falta **reemplazar** estos archivos (mismo nombre que ya subiste):
+**Usuarios configurados ahora mismo** (en `config.js`):
+| Usuario | Contraseña | Puede borrar |
+|---|---|---|
+| `claudios` | `CAMBIAR-ESTA-CLAVE` | ✅ Sí |
+| `staff` | `lucciano2026` | ❌ No |
 
-1. Entrá a: `https://github.com/luccianoseuropa/conteodestock/upload/main`
-2. Arrastrá los archivos que te paso ahora: `index.html`, `style.css`, `app.js`, `manifest.json` y la carpeta `icons` (con los 2 íconos).
-3. GitHub va a avisarte que esos archivos ya existen y los vas a **reemplazar** — confirmá.
-4. Commit changes.
+**⚠️ Importante sobre seguridad:** esta app vive en GitHub Pages, un hosting de archivos estáticos, sin servidor propio. Este login es un control simple para que el personal no borre cosas por error o gente sin usuario no entre a la app — **no es seguridad real**. Cualquiera que sepa inspeccionar el código fuente de la página puede leer las contraseñas en `config.js`. Si más adelante necesitás protección de verdad (por ejemplo, si vas a manejar datos más sensibles o querés evitar que alguien motivado entre igual), lo correcto sería un backend con autenticación de verdad — avisame si querés que lo charlemos.
 
-No hace falta volver a subir `products.js` ni `config.js` porque no cambiaron en esta actualización.
+**Cambiá la contraseña de `claudios`** en `config.js` antes de subir esto (ahora mismo dice `CAMBIAR-ESTA-CLAVE` a propósito, para que la reemplaces vos).
 
-Unos minutos después de subir, el link `https://luccianoseuropa.github.io/conteodestock/` ya va a mostrar la versión nueva (puede tardar un poco por el caché del service worker — si no se ve actualizado, cerrá la app del todo y volvé a abrirla, o hacé "Actualizar" en el navegador).
+### 3. Ícono e identidad
+- Ícono ahora con el **logo real de Lucciano's** que nos pasaste, centrado sobre fondo negro redondeado.
+- Nombre de la app al instalarla en el celular: **"Stock"**.
+
+## Cómo subir esto a GitHub
+
+Solo reemplazá estos 5 archivos/carpeta (mismo nombre, GitHub te va a avisar que ya existen):
+
+1. `https://github.com/luccianoseuropa/conteodestock/upload/main`
+2. Arrastrá: `index.html`, `app.js`, `config.js`, `manifest.json`, carpeta `icons`
+3. Confirmá el reemplazo → Commit changes.
 
 ## Cómo se usa (flujo actual)
 
-1. Abrís la app → elegís **sucursal**.
-2. Elegís **Contar Stock** o **Contar Desperdicio**.
-3. Buscás por nombre/código o filtrás por categoría.
-4. Contás con `−` `+`, o tipeás la cantidad (acepta coma decimal, ej: `2,5`).
-5. Se guarda solo en el celular a medida que contás.
-6. **Finalizar conteo** → **Compartir** → se genera el Excel (`Sucursal - Stock/Desperdicio - Fecha.xlsx`) y se abre el menú del celular para enviarlo.
+1. Abrís la app → **login** (usuario y contraseña).
+2. Elegís **sucursal**.
+3. Elegís **Contar Stock** o **Contar Desperdicio**.
+4. Contás productos (buscador, categorías, `−`/`+`, coma decimal).
+5. **Finalizar conteo** → **Compartir** → se genera el Excel (`Sucursal - Stock/Desperdicio - Fecha.xlsx`).
+6. Desde la pantalla de inicio, en "Conteos finalizados", `claudios` puede borrar cualquier conteo; el resto del personal solo puede verlos.
+
 
 

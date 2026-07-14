@@ -5,9 +5,11 @@
 
 const STORAGE_KEY = 'inv_current_count';
 const HISTORY_KEY = 'inv_history';
+const SESSION_KEY = 'inv_logged_user';
 
 let state = {
-  screen: 'location',   // location | type | count | summary
+  screen: 'login',     // login | location | type | count | summary
+  currentUser: null,
   location: null,
   type: null,           // 'Stock' | 'Desperdicio'
   startedAt: null,
@@ -52,6 +54,33 @@ function saveHistory(entry) {
   hist.unshift(entry);
   // Keep at most 30 finished counts locally
   localStorage.setItem(HISTORY_KEY, JSON.stringify(hist.slice(0, 30)));
+}
+
+function deleteHistoryEntry(index) {
+  const hist = loadHistory();
+  hist.splice(index, 1);
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(hist));
+}
+
+function findUser(username) {
+  return USERS.find(u => u.username.toLowerCase() === String(username).toLowerCase());
+}
+
+function currentUserCanDelete() {
+  const u = findUser(state.currentUser);
+  return !!(u && u.canDelete);
+}
+
+function loadSession() {
+  return localStorage.getItem(SESSION_KEY);
+}
+
+function saveSession(username) {
+  localStorage.setItem(SESSION_KEY, username);
+}
+
+function clearSession() {
+  localStorage.removeItem(SESSION_KEY);
 }
 
 /* ---------------- Helpers ---------------- */
@@ -113,10 +142,57 @@ function toast(msg) {
 /* ---------------- Render router ---------------- */
 
 function render() {
+  if (state.screen === 'login') return renderLogin();
   if (state.screen === 'location') return renderLocation();
   if (state.screen === 'type') return renderType();
   if (state.screen === 'count') return renderCount();
   if (state.screen === 'summary') return renderSummary();
+}
+
+/* ---------------- Login screen ---------------- */
+
+function renderLogin() {
+  app.innerHTML = `
+    <div class="topbar">
+      <div>
+        <h1>📋 Conteo de Inventario</h1>
+        <div class="sub">Lucciano's</div>
+      </div>
+    </div>
+    <div class="home">
+      <div class="home-hero">
+        <span class="emoji">🔒</span>
+        <h2>Ingresá para continuar</h2>
+        <p>Usá tu usuario y contraseña</p>
+      </div>
+      <div class="loc-list" style="padding:0;gap:12px;">
+        <input type="text" id="loginUser" placeholder="Usuario" autocomplete="username"
+          style="padding:14px;border-radius:12px;border:1.5px solid var(--line);font-size:15px;">
+        <input type="password" id="loginPass" placeholder="Contraseña" autocomplete="current-password"
+          style="padding:14px;border-radius:12px;border:1.5px solid var(--line);font-size:15px;">
+      </div>
+      <button class="btn-primary" id="loginBtn">Ingresar</button>
+    </div>
+  `;
+
+  const doLogin = () => {
+    const user = document.getElementById('loginUser').value.trim();
+    const pass = document.getElementById('loginPass').value;
+    const found = findUser(user);
+    if (!found || found.password !== pass) {
+      toast('Usuario o contraseña incorrectos');
+      return;
+    }
+    state.currentUser = found.username;
+    saveSession(found.username);
+    state.screen = 'location';
+    render();
+  };
+
+  document.getElementById('loginBtn').onclick = doLogin;
+  document.getElementById('loginPass').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') doLogin();
+  });
 }
 
 /* ---------------- Location picker (home) ---------------- */
@@ -140,6 +216,7 @@ function renderLocation() {
 
   let historyHtml = '';
   if (history.length) {
+    const canDelete = currentUserCanDelete();
     historyHtml = `
       <div class="section-label">Conteos finalizados</div>
       <div class="history-list">
@@ -149,7 +226,10 @@ function renderLocation() {
               <b>${escapeHtml(h.location)} · ${escapeHtml(h.type || 'Stock')}</b>
               <span>${fmtDate(h.finishedAt)} · ${h.itemCount} productos</span>
             </div>
-            <button data-history-index="${i}">Ver</button>
+            <div style="display:flex;gap:4px;">
+              <button data-history-index="${i}">Ver</button>
+              ${canDelete ? `<button data-delete-index="${i}" style="color:var(--danger);">Borrar</button>` : ''}
+            </div>
           </div>
         `).join('')}
       </div>`;
@@ -161,8 +241,9 @@ function renderLocation() {
     <div class="topbar">
       <div>
         <h1>📋 Conteo de Inventario</h1>
-        <div class="sub">Lucciano's</div>
+        <div class="sub">Lucciano's · ${escapeHtml(state.currentUser || '')}</div>
       </div>
+      <button class="icon-btn" id="logoutBtn" title="Cerrar sesión">⎋</button>
     </div>
     <div class="home">
       <div class="home-hero">
@@ -196,6 +277,13 @@ function renderLocation() {
     };
   }
 
+  document.getElementById('logoutBtn').onclick = () => {
+    clearSession();
+    state.currentUser = null;
+    state.screen = 'login';
+    render();
+  };
+
   document.querySelectorAll('[data-loc]').forEach(btn => {
     btn.onclick = () => {
       state.location = btn.getAttribute('data-loc');
@@ -212,6 +300,19 @@ function renderLocation() {
       state.viewingHistoryId = entry;
       state.screen = 'summary';
       render();
+    };
+  });
+
+  document.querySelectorAll('[data-delete-index]').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const idx = Number(btn.getAttribute('data-delete-index'));
+      const entry = history[idx];
+      if (confirm(`¿Borrar el conteo de ${entry.location} (${entry.type || 'Stock'})? Esta acción no se puede deshacer.`)) {
+        deleteHistoryEntry(idx);
+        toast('Conteo borrado');
+        render();
+      }
     };
   });
 }
@@ -527,6 +628,14 @@ function finalizeIfNeeded(data) {
 }
 
 /* ---------------- Init ---------------- */
+
+(function initSession() {
+  const savedUser = loadSession();
+  if (savedUser && findUser(savedUser)) {
+    state.currentUser = savedUser;
+    state.screen = 'location';
+  }
+})();
 
 render();
 
