@@ -1,14 +1,15 @@
 /* ============================================================
    Conteo de Inventario - lógica principal
-   Pantallas: home -> location -> count -> summary
+   Pantallas: location -> type (Stock/Desperdicio) -> count -> summary
    ============================================================ */
 
 const STORAGE_KEY = 'inv_current_count';
 const HISTORY_KEY = 'inv_history';
 
 let state = {
-  screen: 'home',      // home | location | count | summary
+  screen: 'location',   // location | type | count | summary
   location: null,
+  type: null,           // 'Stock' | 'Desperdicio'
   startedAt: null,
   counts: {},          // { code: qty }
   search: '',
@@ -21,9 +22,10 @@ const app = document.getElementById('app');
 /* ---------------- Persistence ---------------- */
 
 function saveCurrent() {
-  if (!state.location) return;
+  if (!state.location || !state.type) return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
     location: state.location,
+    type: state.type,
     startedAt: state.startedAt,
     counts: state.counts,
   }));
@@ -58,6 +60,18 @@ function fmtDate(iso) {
   const d = new Date(iso);
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
     ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function fmtDateShort(iso) {
+  const d = new Date(iso);
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
+}
+
+function sanitizeForFilename(str) {
+  return String(str).replace(/[\\/:*?"<>|]/g, '').trim();
 }
 
 function escapeHtml(str) {
@@ -99,25 +113,25 @@ function toast(msg) {
 /* ---------------- Render router ---------------- */
 
 function render() {
-  if (state.screen === 'home') return renderHome();
   if (state.screen === 'location') return renderLocation();
+  if (state.screen === 'type') return renderType();
   if (state.screen === 'count') return renderCount();
   if (state.screen === 'summary') return renderSummary();
 }
 
-/* ---------------- Home screen ---------------- */
+/* ---------------- Location picker (home) ---------------- */
 
-function renderHome() {
+function renderLocation() {
   const current = loadCurrent();
   const history = loadHistory();
 
   let resumeHtml = '';
-  if (current && Object.keys(current.counts || {}).length >= 0 && current.location) {
-    const n = Object.values(current.counts).filter(q => Number(q) > 0).length;
+  if (current && current.location && current.type) {
+    const n = Object.values(current.counts || {}).filter(q => Number(q) > 0).length;
     resumeHtml = `
       <div class="resume-card" id="resumeCard">
         <div class="info">
-          <b>${escapeHtml(current.location)}</b>
+          <b>${escapeHtml(current.location)} · ${escapeHtml(current.type)}</b>
           <span>Conteo en curso · ${n} producto${n === 1 ? '' : 's'} contados</span>
         </div>
         <span class="go">Continuar →</span>
@@ -132,7 +146,7 @@ function renderHome() {
         ${history.slice(0, 8).map((h, i) => `
           <div class="history-item">
             <div class="info">
-              <b>${escapeHtml(h.location)}</b>
+              <b>${escapeHtml(h.location)} · ${escapeHtml(h.type || 'Stock')}</b>
               <span>${fmtDate(h.finishedAt)} · ${h.itemCount} productos</span>
             </div>
             <button data-history-index="${i}">Ver</button>
@@ -154,29 +168,41 @@ function renderHome() {
       <div class="home-hero">
         <span class="emoji">🍦</span>
         <h2>¿Listo para contar?</h2>
-        <p>Elegí una sucursal y arrancá el conteo</p>
+        <p>Elegí una sucursal para empezar</p>
       </div>
       ${resumeHtml}
-      <button class="btn-primary" id="newCountBtn">+ Nuevo conteo</button>
+      <div class="loc-list" style="padding:0;">
+        ${LOCATIONS.map(loc => `
+          <button class="loc-item" data-loc="${escapeHtml(loc)}">
+            ${escapeHtml(loc)} <span class="arrow">→</span>
+          </button>
+        `).join('')}
+      </div>
       ${historyHtml}
     </div>
   `;
-
-  document.getElementById('newCountBtn').onclick = () => {
-    state.screen = 'location';
-    render();
-  };
 
   const resumeCard = document.getElementById('resumeCard');
   if (resumeCard) {
     resumeCard.onclick = () => {
       state.location = current.location;
+      state.type = current.type;
       state.startedAt = current.startedAt;
       state.counts = current.counts || {};
+      state.search = '';
+      state.activeCategory = 'Todas';
       state.screen = 'count';
       render();
     };
   }
+
+  document.querySelectorAll('[data-loc]').forEach(btn => {
+    btn.onclick = () => {
+      state.location = btn.getAttribute('data-loc');
+      state.screen = 'type';
+      render();
+    };
+  });
 
   document.querySelectorAll('[data-history-index]').forEach(btn => {
     btn.onclick = (e) => {
@@ -190,36 +216,41 @@ function renderHome() {
   });
 }
 
-/* ---------------- Location picker ---------------- */
+/* ---------------- Type picker (Stock / Desperdicio) ---------------- */
 
-function renderLocation() {
+function renderType() {
   app.innerHTML = `
     <div class="topbar">
       <button class="icon-btn" id="backBtn">←</button>
-      <h1>Elegí la sucursal</h1>
+      <h1>${escapeHtml(state.location)}</h1>
       <span style="width:32px"></span>
     </div>
-    <div class="loc-list" style="margin-top:20px;">
-      ${LOCATIONS.map(loc => `
-        <button class="loc-item" data-loc="${escapeHtml(loc)}">
-          ${escapeHtml(loc)} <span class="arrow">→</span>
-        </button>
-      `).join('')}
+    <div class="home">
+      <div class="home-hero">
+        <span class="emoji">🧾</span>
+        <h2>¿Qué querés contar?</h2>
+        <p>Usa el mismo listado de productos</p>
+      </div>
+      <button class="btn-primary" id="stockBtn">📦 Contar Stock</button>
+      <button class="btn-secondary" id="wasteBtn">🗑️ Contar Desperdicio</button>
     </div>
   `;
-  document.getElementById('backBtn').onclick = () => { state.screen = 'home'; render(); };
-  document.querySelectorAll('[data-loc]').forEach(btn => {
-    btn.onclick = () => {
-      state.location = btn.getAttribute('data-loc');
-      state.startedAt = new Date().toISOString();
-      state.counts = {};
-      state.search = '';
-      state.activeCategory = 'Todas';
-      saveCurrent();
-      state.screen = 'count';
-      render();
-    };
-  });
+
+  document.getElementById('backBtn').onclick = () => { state.screen = 'location'; render(); };
+
+  const start = (type) => {
+    state.type = type;
+    state.startedAt = new Date().toISOString();
+    state.counts = {};
+    state.search = '';
+    state.activeCategory = 'Todas';
+    saveCurrent();
+    state.screen = 'count';
+    render();
+  };
+
+  document.getElementById('stockBtn').onclick = () => start('Stock');
+  document.getElementById('wasteBtn').onclick = () => start('Desperdicio');
 }
 
 /* ---------------- Count screen ---------------- */
@@ -233,48 +264,50 @@ function getFilteredProducts() {
   });
 }
 
-function renderCount() {
-  const filtered = getFilteredProducts();
-  const counted = countedItemsCount();
-
-  // group by category in the order they appear in CATEGORIES
+function buildProductListHtml(filtered) {
   const grouped = {};
   filtered.forEach(p => {
     if (!grouped[p.category]) grouped[p.category] = [];
     grouped[p.category].push(p);
   });
 
-  let listHtml = '';
   if (filtered.length === 0) {
-    listHtml = `<div class="no-results">No se encontraron productos.</div>`;
-  } else {
-    CATEGORIES.forEach(cat => {
-      if (!grouped[cat]) return;
-      listHtml += `<div class="cat-heading">${escapeHtml(cat)}</div>`;
-      grouped[cat].forEach(p => {
-        const qty = state.counts[p.code] || 0;
-        listHtml += `
-          <div class="product-row ${qty > 0 ? 'counted' : ''}" data-row="${p.code}">
-            <div class="product-info">
-              <div class="code">#${p.code} · ${escapeHtml(p.unit)}</div>
-              <div class="name">${escapeHtml(p.name)}</div>
-            </div>
-            <div class="qty-controls">
-              <button class="qty-btn minus" data-minus="${p.code}">−</button>
-              <input class="qty-input" type="text" inputmode="decimal" value="${formatQty(qty)}" data-qty="${p.code}">
-              <button class="qty-btn plus" data-plus="${p.code}">+</button>
-            </div>
-          </div>`;
-      });
-    });
+    return `<div class="no-results">No se encontraron productos.</div>`;
   }
+  let listHtml = '';
+  CATEGORIES.forEach(cat => {
+    if (!grouped[cat]) return;
+    listHtml += `<div class="cat-heading">${escapeHtml(cat)}</div>`;
+    grouped[cat].forEach(p => {
+      const qty = state.counts[p.code] || 0;
+      listHtml += `
+        <div class="product-row ${qty > 0 ? 'counted' : ''}" data-row="${p.code}">
+          <div class="product-info">
+            <div class="code">#${p.code} · ${escapeHtml(p.unit)}</div>
+            <div class="name">${escapeHtml(p.name)}</div>
+          </div>
+          <div class="qty-controls">
+            <button class="qty-btn minus" data-minus="${p.code}">−</button>
+            <input class="qty-input" type="text" inputmode="decimal" value="${formatQty(qty)}" data-qty="${p.code}">
+            <button class="qty-btn plus" data-plus="${p.code}">+</button>
+          </div>
+        </div>`;
+    });
+  });
+  return listHtml;
+}
+
+function renderCount() {
+  const filtered = getFilteredProducts();
+  const counted = countedItemsCount();
+  const listHtml = buildProductListHtml(filtered);
 
   app.innerHTML = `
     <div class="topbar">
       <button class="icon-btn" id="backBtn">←</button>
       <div style="text-align:center;">
         <h1>${escapeHtml(state.location)}</h1>
-        <div class="sub">Guardado automático activado</div>
+        <div class="sub">${escapeHtml(state.type)} · guardado automático</div>
       </div>
       <span class="badge">${counted}/${PRODUCTS.length}</span>
     </div>
@@ -295,7 +328,7 @@ function renderCount() {
     </div>
   `;
 
-  document.getElementById('backBtn').onclick = () => { state.screen = 'home'; render(); };
+  document.getElementById('backBtn').onclick = () => { state.screen = 'location'; render(); };
 
   const searchInput = document.getElementById('searchInput');
   searchInput.oninput = (e) => {
@@ -307,8 +340,12 @@ function renderCount() {
     const btn = e.target.closest('[data-cat]');
     if (!btn) return;
     state.activeCategory = btn.getAttribute('data-cat');
-    render();
-    document.getElementById('searchInput').focus();
+    // Solo actualizamos las clases activas y la lista de productos:
+    // NO llamamos a render() completo para no perder el scroll de la página.
+    document.querySelectorAll('#chips .chip').forEach(c => c.classList.toggle('active', c === btn));
+    // Acompañamos el scroll horizontal de los chips hacia el elegido.
+    btn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    renderCountListOnly();
   });
 
   attachCountRowHandlers();
@@ -324,41 +361,12 @@ function renderCount() {
   };
 }
 
-// Re-render only the product list + badge/footer without losing search focus
+// Re-render only the product list + badge/footer, without touching the
+// search input, the chips bar or the page scroll position.
 function renderCountListOnly() {
   const filtered = getFilteredProducts();
   const counted = countedItemsCount();
-  const grouped = {};
-  filtered.forEach(p => {
-    if (!grouped[p.category]) grouped[p.category] = [];
-    grouped[p.category].push(p);
-  });
-
-  let listHtml = '';
-  if (filtered.length === 0) {
-    listHtml = `<div class="no-results">No se encontraron productos.</div>`;
-  } else {
-    CATEGORIES.forEach(cat => {
-      if (!grouped[cat]) return;
-      listHtml += `<div class="cat-heading">${escapeHtml(cat)}</div>`;
-      grouped[cat].forEach(p => {
-        const qty = state.counts[p.code] || 0;
-        listHtml += `
-          <div class="product-row ${qty > 0 ? 'counted' : ''}" data-row="${p.code}">
-            <div class="product-info">
-              <div class="code">#${p.code} · ${escapeHtml(p.unit)}</div>
-              <div class="name">${escapeHtml(p.name)}</div>
-            </div>
-            <div class="qty-controls">
-              <button class="qty-btn minus" data-minus="${p.code}">−</button>
-              <input class="qty-input" type="text" inputmode="decimal" value="${formatQty(qty)}" data-qty="${p.code}">
-              <button class="qty-btn plus" data-plus="${p.code}">+</button>
-            </div>
-          </div>`;
-      });
-    });
-  }
-  document.querySelector('.product-list').innerHTML = listHtml;
+  document.querySelector('.product-list').innerHTML = buildProductListHtml(filtered);
   document.querySelector('.badge').textContent = `${counted}/${PRODUCTS.length}`;
   document.querySelector('.count-pill').textContent = `${counted} contados`;
   attachCountRowHandlers();
@@ -408,7 +416,9 @@ function updateRowUI(code, qty) {
 
 function renderSummary() {
   const isHistory = !!state.viewingHistoryId;
-  const data = isHistory ? state.viewingHistoryId : { location: state.location, counts: state.counts, finishedAt: new Date().toISOString() };
+  const data = isHistory
+    ? state.viewingHistoryId
+    : { location: state.location, type: state.type, counts: state.counts, finishedAt: new Date().toISOString() };
 
   const items = PRODUCTS
     .filter(p => Number(data.counts[p.code] || 0) > 0)
@@ -432,8 +442,8 @@ function renderSummary() {
     <div class="summary">
       <div class="summary-hero">
         <span class="check">✅</span>
-        <h2>${isHistory ? escapeHtml(data.location) : 'Conteo finalizado'}</h2>
-        <p>${escapeHtml(data.location)} · ${fmtDate(data.finishedAt)}</p>
+        <h2>${escapeHtml(data.location)} · ${escapeHtml(data.type || 'Stock')}</h2>
+        <p>${fmtDate(data.finishedAt)}</p>
       </div>
       <div class="summary-stats">
         <div class="stat-card"><div class="num">${items.length}</div><div class="lbl">Productos</div></div>
@@ -448,7 +458,7 @@ function renderSummary() {
   `;
 
   document.getElementById('backBtn').onclick = () => {
-    if (isHistory) { state.viewingHistoryId = null; state.screen = 'home'; }
+    if (isHistory) { state.viewingHistoryId = null; state.screen = 'location'; }
     else { state.screen = 'count'; }
     render();
   };
@@ -460,29 +470,30 @@ function renderSummary() {
 }
 
 async function shareCount(data, items, totalUnits, isHistory) {
-  const filenameSafeLoc = data.location.replace(/[^\w\-]+/g, '_');
-  const dateStr = new Date(data.finishedAt).toISOString().slice(0, 10);
-  const filename = `Inventario_${filenameSafeLoc}_${dateStr}.xlsx`;
+  const loc = sanitizeForFilename(data.location);
+  const tipo = sanitizeForFilename(data.type || 'Stock');
+  const dateStr = fmtDateShort(data.finishedAt);
+  const filename = `${loc} - ${tipo} - ${dateStr}.xlsx`;
 
-  // Columnas elegidas: Código, Producto, Categoría, Unidad de medida, Cantidad contada, Sucursal, Fecha del conteo
-  const header = ['Código', 'Producto', 'Categoría', 'Unidad de medida', 'Cantidad contada', 'Sucursal', 'Fecha del conteo'];
-  const fechaFmt = fmtDate(data.finishedAt);
-  const rows = items.map(p => [p.code, p.name, p.category, p.unit, Number(p.qty), data.location, fechaFmt]);
+  // Columnas: Código, Producto, Categoría, Unidad de medida, Cantidad contada, Sucursal
+  // (la fecha ya queda registrada en el nombre del archivo)
+  const header = ['Código', 'Producto', 'Categoría', 'Unidad de medida', 'Cantidad contada', 'Sucursal'];
+  const rows = items.map(p => [p.code, p.name, p.category, p.unit, Number(p.qty), data.location]);
 
   let shared = false;
   try {
     const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-    ws['!cols'] = [{ wch: 9 }, { wch: 34 }, { wch: 24 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 18 }];
+    ws['!cols'] = [{ wch: 9 }, { wch: 34 }, { wch: 24 }, { wch: 14 }, { wch: 16 }, { wch: 16 }];
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Conteo');
+    XLSX.utils.book_append_sheet(wb, ws, tipo.slice(0, 28));
     const wbout = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
     const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const file = new File([blob], filename, { type: blob.type });
 
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       await navigator.share({
-        title: `Inventario ${data.location}`,
-        text: `Conteo de ${data.location} - ${fechaFmt}`,
+        title: filename,
+        text: `Conteo de ${tipo} - ${data.location}`,
         files: [file],
       });
       shared = true;
@@ -507,6 +518,7 @@ function finalizeIfNeeded(data) {
   state._finalized = true;
   saveHistory({
     location: data.location,
+    type: data.type,
     finishedAt: data.finishedAt,
     counts: data.counts,
     itemCount: Object.values(data.counts).filter(q => Number(q) > 0).length,

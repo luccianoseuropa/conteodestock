@@ -1,6 +1,6 @@
 :root{
-  --pink:#E63969;
-  --pink-dark:#C22254;
+  --pink:#1A1A1A;
+  --pink-dark:#000000;
   --pistachio:#7DA655;
   --cream:#FFF8F3;
   --ink:#241B1E;
@@ -112,7 +112,7 @@ input{font-family:inherit;}
   font-size:16px;
   font-weight:700;
   text-align:center;
-  box-shadow:0 4px 14px rgba(230,57,105,.35);
+  box-shadow:0 4px 14px rgba(0,0,0,.25);
 }
 .btn-primary:active{background:var(--pink-dark);}
 .btn-secondary{
