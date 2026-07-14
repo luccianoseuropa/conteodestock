@@ -10,13 +10,15 @@ const HISTORY_KEY = 'inv_history';
 const SESSION_KEY = 'inv_logged_user';
 
 let state = {
-  screen: 'login',     // login | location | count | askWaste | summary
+  screen: 'login',     // login | location | changePassword | count | askWaste | summary
   currentUser: null,
   location: null,
   stage: 'stock',       // 'stock' | 'desperdicio' -- qué se está contando ahora mismo
   startedAt: null,
   stockCounts: {},       // { code: qty }
   wasteCounts: {},        // { code: qty }
+  wasteNotes: {},          // { code: 'motivo del desperdicio' }
+  undoStack: [],            // [{ stage, code, prevValue }] -- para el botón Deshacer
   search: '',
   activeCategory: 'Todas',
   viewingHistoryId: null, // when set, summary shows a read-only past count
@@ -34,6 +36,7 @@ function saveCurrent() {
     startedAt: state.startedAt,
     stockCounts: state.stockCounts,
     wasteCounts: state.wasteCounts,
+    wasteNotes: state.wasteNotes,
   }));
 }
 
@@ -339,6 +342,7 @@ function renderLocation() {
       state.startedAt = current.startedAt;
       state.stockCounts = current.stockCounts || {};
       state.wasteCounts = current.wasteCounts || {};
+      state.wasteNotes = current.wasteNotes || {};
       state.search = '';
       state.activeCategory = 'Todas';
       state.screen = 'count';
@@ -367,6 +371,8 @@ function renderLocation() {
       state.startedAt = new Date().toISOString();
       state.stockCounts = {};
       state.wasteCounts = {};
+      state.wasteNotes = {};
+      state.undoStack = [];
       state.search = '';
       state.activeCategory = 'Todas';
       saveCurrent();
@@ -472,6 +478,7 @@ function getFilteredProducts() {
 
 function buildProductListHtml(filtered) {
   const counts = activeCounts();
+  const isWaste = state.stage === 'desperdicio';
   const grouped = {};
   filtered.forEach(p => {
     if (!grouped[p.category]) grouped[p.category] = [];
@@ -487,6 +494,11 @@ function buildProductListHtml(filtered) {
     listHtml += `<div class="cat-heading">${escapeHtml(cat)}</div>`;
     grouped[cat].forEach(p => {
       const qty = counts[p.code] || 0;
+      const noteHtml = isWaste ? `
+        <div class="waste-note-wrap" data-note-wrap="${p.code}">
+          <input type="text" class="waste-note-input" placeholder="Motivo del desperdicio (opcional)"
+            value="${escapeHtml(state.wasteNotes[p.code] || '')}" data-note="${p.code}">
+        </div>` : '';
       listHtml += `
         <div class="product-row ${qty > 0 ? 'counted' : ''}" data-row="${p.code}">
           <div class="product-info">
@@ -498,7 +510,8 @@ function buildProductListHtml(filtered) {
             <input class="qty-input" type="text" inputmode="decimal" value="${formatQty(qty)}" data-qty="${p.code}">
             <button class="qty-btn plus" data-plus="${p.code}">+</button>
           </div>
-        </div>`;
+        </div>
+        ${noteHtml}`;
     });
   });
   return listHtml;
@@ -531,6 +544,7 @@ function renderCount() {
     </div>
     <div class="product-list">${listHtml}</div>
     <div class="footer-bar">
+      <button class="qty-btn" id="undoBtn" title="Deshacer último cambio" style="width:44px;height:44px;flex:none;">↩️</button>
       <span class="count-pill">${counted} contados</span>
       <button class="btn-primary" id="finishBtn">${isWaste ? 'Finalizar desperdicio' : 'Finalizar conteo'}</button>
     </div>
@@ -561,6 +575,8 @@ function renderCount() {
   });
 
   attachCountRowHandlers();
+
+  document.getElementById('undoBtn').onclick = () => undoLastChange();
 
   document.getElementById('finishBtn').onclick = () => {
     if (countedItemsCount() === 0) {
@@ -600,6 +616,30 @@ function attachCountRowHandlers() {
     input.onchange = (e) => setQty(input.getAttribute('data-qty'), e.target.value);
     input.onfocus = (e) => e.target.select();
   });
+  document.querySelectorAll('[data-note]').forEach(input => {
+    input.onchange = (e) => {
+      const code = input.getAttribute('data-note');
+      state.wasteNotes[code] = e.target.value;
+      saveCurrent();
+    };
+  });
+}
+
+function pushUndo(code, prevValue) {
+  state.undoStack.push({ stage: state.stage, code, prevValue });
+  if (state.undoStack.length > 20) state.undoStack.shift();
+}
+
+function undoLastChange() {
+  const last = state.undoStack.pop();
+  if (!last || last.stage !== state.stage) {
+    toast('No hay nada para deshacer');
+    return;
+  }
+  activeCounts()[last.code] = last.prevValue;
+  saveCurrent();
+  updateRowUI(last.code, last.prevValue);
+  toast('Cambio deshecho');
 }
 
 function changeQty(code, delta) {
@@ -607,14 +647,18 @@ function changeQty(code, delta) {
   const current = Number(counts[code] || 0);
   let next = current + delta;
   if (next < 0) next = 0;
+  pushUndo(code, current);
   counts[code] = next;
   saveCurrent();
   updateRowUI(code, next);
 }
 
 function setQty(code, value) {
+  const counts = activeCounts();
+  const prev = Number(counts[code] || 0);
   const n = parseQtyInput(value);
-  activeCounts()[code] = n;
+  pushUndo(code, prev);
+  counts[code] = n;
   saveCurrent();
   updateRowUI(code, n);
 }
@@ -655,6 +699,7 @@ function renderAskWaste() {
 
   document.getElementById('wasteYes').onclick = () => {
     state.stage = 'desperdicio';
+    state.undoStack = [];
     state.search = '';
     state.activeCategory = 'Todas';
     saveCurrent();
@@ -688,21 +733,46 @@ function renderSummary() {
     .map(p => ({ ...p, qty: data.stockCounts[p.code] }));
   const wasteItems = PRODUCTS
     .filter(p => Number((data.wasteCounts || {})[p.code] || 0) > 0)
-    .map(p => ({ ...p, qty: data.wasteCounts[p.code] }));
+    .map(p => ({ ...p, qty: data.wasteCounts[p.code], note: (data.wasteNotes || {})[p.code] || '' }));
 
   const totalStockUnits = stockItems.reduce((sum, p) => sum + Number(p.qty), 0);
   const hasWaste = wasteItems.length > 0;
 
-  const buildRows = (items) => items.map(p => `
+  function buildCategorySummary(items) {
+    const totals = {}; // key: "categoria||unidad" -> total
+    items.forEach(p => {
+      const key = p.category + '||' + p.unit;
+      totals[key] = (totals[key] || 0) + Number(p.qty);
+    });
+    return Object.keys(totals).map(key => {
+      const [category, unit] = key.split('||');
+      return { category, unit, total: totals[key] };
+    }).sort((a, b) => CATEGORIES.indexOf(a.category) - CATEGORIES.indexOf(b.category));
+  }
+
+  const buildCategorySummaryHtml = (items) => {
+    const cats = buildCategorySummary(items);
+    if (!cats.length) return '';
+    return `<div class="summary-table" style="margin-bottom:10px;">${cats.map(c => `
+      <div class="summary-row">
+        <div class="name">${escapeHtml(c.category)}</div>
+        <div class="qty">${formatQty(c.total)} ${escapeHtml(c.unit)}</div>
+      </div>
+    `).join('')}</div>`;
+  };
+
+  const buildRows = (items, withNotes) => items.map(p => `
     <div class="summary-row">
-      <div class="name">${escapeHtml(p.name)}<span class="cat">#${p.code} · ${escapeHtml(p.category)} · ${escapeHtml(p.unit)}</span></div>
+      <div class="name">${escapeHtml(p.name)}<span class="cat">#${p.code} · ${escapeHtml(p.category)} · ${escapeHtml(p.unit)}${withNotes && p.note ? ` · Motivo: ${escapeHtml(p.note)}` : ''}</span></div>
       <div class="qty">${formatQty(p.qty)}</div>
     </div>
   `).join('');
 
   const wasteBlockHtml = hasWaste ? `
-    <div class="section-label" style="margin-top:18px;">Desperdicio</div>
-    <div class="summary-table">${buildRows(wasteItems)}</div>
+    <div class="section-label" style="margin-top:18px;">Desperdicio — resumen por categoría</div>
+    ${buildCategorySummaryHtml(wasteItems)}
+    <div class="section-label">Desperdicio — detalle</div>
+    <div class="summary-table">${buildRows(wasteItems, true)}</div>
   ` : '';
 
   app.innerHTML = `
@@ -721,8 +791,10 @@ function renderSummary() {
         <div class="stat-card"><div class="num">${stockItems.length}</div><div class="lbl">Productos (Stock)</div></div>
         <div class="stat-card"><div class="num">${totalStockUnits}</div><div class="lbl">Unidades (Stock)</div></div>
       </div>
-      <div class="section-label">Stock</div>
-      <div class="summary-table">${buildRows(stockItems) || '<div class="empty-hint">No hay productos contados.</div>'}</div>
+      <div class="section-label">Stock — resumen por categoría</div>
+      ${buildCategorySummaryHtml(stockItems)}
+      <div class="section-label">Stock — detalle</div>
+      <div class="summary-table">${buildRows(stockItems, false) || '<div class="empty-hint">No hay productos contados.</div>'}</div>
       ${wasteBlockHtml}
     </div>
     <div class="footer-bar">
@@ -753,7 +825,9 @@ async function shareCount(data, stockItems, wasteItems, isHistory) {
   const filename = `Stock - ${loc} - ${dateStr}.xlsx`;
 
   const header = ['Código', 'Producto', 'Categoría', 'Unidad de medida', 'Cantidad contada', 'Sucursal'];
+  const wasteHeader = [...header, 'Motivo'];
   const toRows = (items) => items.map(p => [p.code, p.name, p.category, p.unit, Number(p.qty), data.location]);
+  const toWasteRows = (items) => items.map(p => [p.code, p.name, p.category, p.unit, Number(p.qty), data.location, p.note || '']);
   const infoRows = (sheetLabel) => [
     [`Generado por: ${data.generatedBy || '—'}`],
     [`Sucursal: ${data.location}    Fecha: ${fmtDate(data.finishedAt)}    Pestaña: ${sheetLabel}`],
@@ -769,8 +843,8 @@ async function shareCount(data, stockItems, wasteItems, isHistory) {
     XLSX.utils.book_append_sheet(wb, wsStock, 'Stock');
 
     if (wasteItems.length > 0) {
-      const wsWaste = XLSX.utils.aoa_to_sheet([...infoRows('Desperdicio'), header, ...toRows(wasteItems)]);
-      wsWaste['!cols'] = [{ wch: 9 }, { wch: 34 }, { wch: 24 }, { wch: 14 }, { wch: 16 }, { wch: 16 }];
+      const wsWaste = XLSX.utils.aoa_to_sheet([...infoRows('Desperdicio'), wasteHeader, ...toWasteRows(wasteItems)]);
+      wsWaste['!cols'] = [{ wch: 9 }, { wch: 34 }, { wch: 24 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 28 }];
       XLSX.utils.book_append_sheet(wb, wsWaste, 'Desperdicio');
     }
 
@@ -811,6 +885,7 @@ function finalizeIfNeeded(data) {
     location: data.location,
     finishedAt: data.finishedAt,
     generatedBy: data.generatedBy,
+    wasteNotes: state.wasteNotes,
     stockCounts: data.stockCounts,
     wasteCounts: data.wasteCounts,
     itemCountStock: Object.values(data.stockCounts || {}).filter(q => Number(q) > 0).length,

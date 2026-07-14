@@ -139,7 +139,7 @@ input{font-family:inherit;}
   font-weight:600;
   text-align:center;
 }
-.btn-secondary:active{background:#F5EDEA;}
+.btn-secondary:active{background:var(--line);}
 .resume-card{
   background:var(--white);
   border:1.5px solid var(--line);
@@ -203,7 +203,7 @@ input{font-family:inherit;}
   justify-content:space-between;
   align-items:center;
 }
-.loc-item:active{background:#F5EDEA;}
+.loc-item:active{background:var(--line);}
 .loc-item .arrow{color:var(--pink);font-size:18px;}
 
 /* ---------- Count screen ---------- */
@@ -291,6 +291,21 @@ input{font-family:inherit;}
   border-color:var(--pistachio);
   background:var(--counted-bg);
 }
+.waste-note-wrap{
+  margin:-4px 0 8px;
+  padding:0 2px;
+}
+.waste-note-input{
+  width:100%;
+  padding:8px 10px;
+  border-radius:9px;
+  border:1.5px solid var(--line);
+  background:var(--white);
+  color:var(--ink);
+  font-size:12.5px;
+}
+.waste-note-input::placeholder{color:var(--ink-soft);}
+.waste-note-input:focus{outline:2px solid var(--pink);}
 .product-info{flex:1;min-width:0;}
 .product-info .code{
   font-family:var(--mono);
