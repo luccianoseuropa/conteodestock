@@ -4,7 +4,7 @@ const LOCATIONS = [
   'BCN 1 - Space',
   'BCN 2 - Moon',
   'Madrid',
-  'Roma',
+  'Málaga 1',
 ];
 
 // Usuarios habilitados para entrar a la app.

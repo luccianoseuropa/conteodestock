@@ -1,4 +1,4 @@
-const CACHE_NAME = 'inventario-cache-v3';
+const CACHE_NAME = 'inventario-cache-v4';
 const FILES_TO_CACHE = [
   './',
   './index.html',
@@ -17,7 +17,15 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(FILES_TO_CACHE))
   );
-  self.skipWaiting();
+  // No self.skipWaiting() acá a propósito: así el usuario ve el botón
+  // "Actualizar" y decide cuándo pasar a la versión nueva, en vez de
+  // que la app cambie sola de golpe mientras la está usando.
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('activate', (event) => {

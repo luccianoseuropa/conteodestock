@@ -798,8 +798,58 @@ function finalizeIfNeeded(data) {
 
 render();
 
+/* ---------------- Actualizaciones automáticas ----------------
+   Cuando subís cambios nuevos a GitHub, el celular de cada persona
+   descarga el archivo en segundo plano y le muestra un banner con
+   un botón "Actualizar". Al tocarlo, se activa la versión nueva y
+   se recarga la página sola. */
+
+function showUpdateBanner(waitingWorker) {
+  if (document.getElementById('updateBanner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'updateBanner';
+  banner.className = 'update-banner';
+  banner.innerHTML = `
+    <span>Hay una actualización disponible</span>
+    <button id="updateBannerBtn">Actualizar</button>
+  `;
+  document.body.appendChild(banner);
+  document.getElementById('updateBannerBtn').onclick = () => {
+    banner.querySelector('button').textContent = 'Actualizando…';
+    waitingWorker.postMessage('SKIP_WAITING');
+  };
+}
+
 if ('serviceWorker' in navigator) {
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
+
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('service-worker.js').catch(() => {});
+    navigator.serviceWorker.register('service-worker.js').then((reg) => {
+      // Si ya hay una versión nueva esperando (por ejemplo, se descargó
+      // mientras la app estaba cerrada), avisamos apenas se abre.
+      if (reg.waiting) showUpdateBanner(reg.waiting);
+
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing;
+        if (!newWorker) return;
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            showUpdateBanner(newWorker);
+          }
+        });
+      });
+
+      // Revisa si hay una versión nueva cada vez que la app vuelve a
+      // primer plano, y cada 5 minutos si se la deja abierta.
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') reg.update().catch(() => {});
+      });
+      setInterval(() => reg.update().catch(() => {}), 5 * 60 * 1000);
+    }).catch(() => {});
   });
 }
