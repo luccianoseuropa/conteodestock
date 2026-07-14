@@ -1,0 +1,25 @@
+{
+  "name": "Conteo de Inventario - Lucciano's",
+  "short_name": "Inventario",
+  "description": "App para contar inventario por sucursal",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#FFF8F3",
+  "theme_color": "#E63969",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
