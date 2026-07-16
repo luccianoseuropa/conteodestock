@@ -524,13 +524,12 @@ function buildProductListHtml(filtered) {
       const isHelado = p.category === 'HELADO (KG)';
 
       if (isHelado) {
-        const detail = activeHeladoDetails()[p.code] || { vasquetas: 0, manualKg: 0 };
-        const avgW = p.avgWeight || 0;
-        const subtotal = detail.vasquetas * avgW;
+        const detail = activeHeladoDetails()[p.code] || { vasquetas: 0, pesoProm: 0, manualKg: 0 };
+        const subtotal = (detail.vasquetas || 0) * (detail.pesoProm || 0);
         listHtml += `
           <div class="product-row ${qty > 0 ? 'counted' : ''}" data-row="${p.code}">
             <div class="product-info">
-              <div class="code">#${p.code} · Kg${avgW ? ` · vasqueta ≈ ${formatQty(avgW)} kg` : ' · peso pendiente'}</div>
+              <div class="code">#${p.code} · Kg</div>
               <div class="name">${escapeHtml(p.name)}</div>
             </div>
           </div>
@@ -538,6 +537,10 @@ function buildProductListHtml(filtered) {
             <div class="helado-field">
               <span class="helado-label">Cant. vasquetas</span>
               <input type="text" inputmode="numeric" class="helado-input" data-vasq="${p.code}" value="${detail.vasquetas || ''}" placeholder="0">
+            </div>
+            <div class="helado-field">
+              <span class="helado-label">Peso prom. (kg)</span>
+              <input type="text" inputmode="decimal" class="helado-input" data-pesoprom="${p.code}" value="${detail.pesoProm ? formatQty(detail.pesoProm) : ''}" placeholder="0">
             </div>
             <div class="helado-eq">= ${formatQty(subtotal)} kg</div>
             <div class="helado-field">
@@ -682,6 +685,10 @@ function attachCountRowHandlers() {
     input.onchange = (e) => updateHeladoRow(input.getAttribute('data-vasq'), 'vasquetas', e.target.value);
     input.onfocus = (e) => e.target.select();
   });
+  document.querySelectorAll('[data-pesoprom]').forEach(input => {
+    input.onchange = (e) => updateHeladoRow(input.getAttribute('data-pesoprom'), 'pesoProm', e.target.value);
+    input.onfocus = (e) => e.target.select();
+  });
   document.querySelectorAll('[data-manualkg]').forEach(input => {
     input.onchange = (e) => updateHeladoRow(input.getAttribute('data-manualkg'), 'manualKg', e.target.value);
     input.onfocus = (e) => e.target.select();
@@ -690,16 +697,14 @@ function attachCountRowHandlers() {
 
 function updateHeladoRow(code, field, rawValue) {
   const details = activeHeladoDetails();
-  const current = details[code] || { vasquetas: 0, manualKg: 0 };
+  const current = details[code] || { vasquetas: 0, pesoProm: 0, manualKg: 0 };
   const value = field === 'vasquetas'
     ? Math.max(0, Math.round(parseQtyInput(rawValue)))
     : Math.max(0, parseQtyInput(rawValue));
   current[field] = value;
   details[code] = current;
 
-  const product = PRODUCTS.find(p => String(p.code) === String(code));
-  const avgW = (product && product.avgWeight) || 0;
-  const total = (current.vasquetas || 0) * avgW + (current.manualKg || 0);
+  const total = (current.vasquetas || 0) * (current.pesoProm || 0) + (current.manualKg || 0);
   activeCounts()[code] = total;
   saveCurrent();
 
@@ -708,7 +713,7 @@ function updateHeladoRow(code, field, rawValue) {
   const wrap = document.querySelector(`[data-helado-wrap="${code}"]`);
   if (wrap) {
     const eq = wrap.querySelector('.helado-eq');
-    if (eq) eq.textContent = `= ${formatQty((current.vasquetas || 0) * avgW)} kg`;
+    if (eq) eq.textContent = `= ${formatQty((current.vasquetas || 0) * (current.pesoProm || 0))} kg`;
     const totalLabel = wrap.querySelector(`[data-total-label="${code}"]`);
     if (totalLabel) totalLabel.textContent = `${formatQty(total)} kg`;
   }
