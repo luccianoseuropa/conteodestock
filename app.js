@@ -286,7 +286,10 @@ function renderLocation() {
           <b>${escapeHtml(current.location)}</b>
           <span>Conteo en curso · ${nStock} de stock${nWaste ? `, ${nWaste} de desperdicio` : ''}</span>
         </div>
-        <span class="go">Continuar →</span>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+          <span class="go">Continuar →</span>
+          <button id="discardCurrentBtn" style="font-size:11.5px;color:var(--danger);font-weight:700;">Descartar</button>
+        </div>
       </div>`;
   }
 
@@ -355,6 +358,18 @@ function renderLocation() {
       state.activeCategory = 'Todas';
       state.screen = 'count';
       render();
+    };
+  }
+
+  const discardBtn = document.getElementById('discardCurrentBtn');
+  if (discardBtn) {
+    discardBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (confirm('¿Descartar este conteo sin finalizar? Se va a borrar todo lo que se cargó.')) {
+        clearCurrent();
+        toast('Conteo descartado');
+        render();
+      }
     };
   }
 
@@ -493,6 +508,9 @@ function buildProductListHtml(filtered) {
     if (!grouped[p.category]) grouped[p.category] = [];
     grouped[p.category].push(p);
   });
+  if (grouped['HELADO (KG)']) {
+    grouped['HELADO (KG)'].sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  }
 
   if (filtered.length === 0) {
     return `<div class="no-results">No se encontraron productos.</div>`;
