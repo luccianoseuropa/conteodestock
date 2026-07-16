@@ -1,10 +1,12 @@
 // Ubicaciones disponibles para el conteo.
-// Para agregar, quitar o renombrar una sucursal, editá esta lista.
+// Cada una puede tener una foto (archivo de imagen subido junto a la app,
+// en la raíz del repo) para identificarla más fácil al elegir sucursal.
+// Si "photo" es null, se muestra un ícono genérico en su lugar.
 const LOCATIONS = [
-  'BCN 1 - Space',
-  'BCN 2 - Moon',
-  'Madrid',
-  'Málaga 1',
+  { name: 'BCN 1 - Space', photo: 'loc-bcn1.jpg' },
+  { name: 'BCN 2 - Moon', photo: 'loc-bcn2.jpg' },
+  { name: 'Madrid', photo: 'loc-madrid.jpg' },
+  { name: 'Málaga 1', photo: 'loc-malaga1.jpg' },
 ];
 
 // Usuarios habilitados para entrar a la app.

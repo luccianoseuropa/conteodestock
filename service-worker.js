@@ -1,4 +1,4 @@
-const CACHE_NAME = 'inventario-cache-v9';
+const CACHE_NAME = 'inventario-cache-v13';
 const FILES_TO_CACHE = [
   './',
   './index.html',
@@ -11,6 +11,10 @@ const FILES_TO_CACHE = [
   './icon-512.png',
   './icon-maskable-192.png',
   './icon-maskable-512.png',
+  './loc-bcn1.jpg',
+  './loc-bcn2.jpg',
+  './loc-madrid.jpg',
+  './loc-malaga1.jpg',
 ];
 
 self.addEventListener('install', (event) => {

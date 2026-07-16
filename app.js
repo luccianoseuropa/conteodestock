@@ -335,8 +335,12 @@ function renderLocation() {
       ${resumeHtml}
       <div class="loc-list" style="padding:0;">
         ${LOCATIONS.map(loc => `
-          <button class="loc-item" data-loc="${escapeHtml(loc)}">
-            ${escapeHtml(loc)} <span class="arrow">→</span>
+          <button class="loc-item" data-loc="${escapeHtml(loc.name)}">
+            ${loc.photo
+              ? `<img class="loc-photo" src="${escapeHtml(loc.photo)}" alt="${escapeHtml(loc.name)}">`
+              : `<span class="loc-photo loc-photo-placeholder">🏬</span>`}
+            <span class="loc-name">${escapeHtml(loc.name)}</span>
+            <span class="arrow">→</span>
           </button>
         `).join('')}
       </div>
