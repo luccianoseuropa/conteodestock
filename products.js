@@ -65,8 +65,6 @@ const PRODUCTS = [
   { code: 2200, name: 'CHEESECAKE', category: 'PASTELERIA', unit: 'Unidad', avgWeight: null },
   { code: 2201, name: 'PISTACCHIO', category: 'PASTELERIA', unit: 'Unidad', avgWeight: null },
   { code: 2199, name: 'ROCHER', category: 'PASTELERIA', unit: 'Unidad', avgWeight: null },
-  { code: 2115, name: 'BROWNIE', category: 'PASTELERIA', unit: 'Unidad', avgWeight: null },
-  { code: 2135, name: 'TIRAMISU', category: 'PASTELERIA', unit: 'Unidad', avgWeight: null },
   { code: 2156, name: 'TERMICOS TAKE AWAY 1 KG', category: 'TERMICOS', unit: 'Unidad', avgWeight: null },
   { code: 2157, name: 'TERMICOS TAKE AWAY 1/2 KG', category: 'TERMICOS', unit: 'Unidad', avgWeight: null },
   { code: 2396, name: 'TERMICOS TAKE AWAY 1/4 KG', category: 'TERMICOS', unit: 'Unidad', avgWeight: null },
