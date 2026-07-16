@@ -312,6 +312,46 @@ input{font-family:inherit;}
 }
 .waste-note-input::placeholder{color:var(--ink-soft);}
 .waste-note-input:focus{outline:2px solid var(--pink);}
+
+.helado-controls{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-top:none;
+  border-radius:0 0 12px 12px;
+  margin:-8px 0 8px;
+  padding:10px 12px 12px;
+  display:flex;
+  flex-wrap:wrap;
+  align-items:flex-end;
+  gap:10px;
+}
+.helado-field{display:flex;flex-direction:column;gap:4px;}
+.helado-label{font-size:10.5px;color:var(--ink-soft);font-weight:600;}
+.helado-input{
+  width:84px;
+  padding:8px 10px;
+  border-radius:9px;
+  border:1.5px solid var(--line);
+  background:var(--cream);
+  color:var(--ink);
+  font-family:var(--mono);
+  font-size:14px;
+  text-align:center;
+}
+.helado-input:focus{outline:2px solid var(--pink);}
+.helado-eq{
+  font-family:var(--mono);
+  font-size:12.5px;
+  color:var(--ink-soft);
+  padding-bottom:9px;
+}
+.helado-total{
+  margin-left:auto;
+  font-size:12.5px;
+  color:var(--ink-soft);
+  padding-bottom:9px;
+}
+.helado-total b{color:var(--accent-text);font-family:var(--mono);}
 .product-info{flex:1;min-width:0;}
 .product-info .code{
   font-family:var(--mono);

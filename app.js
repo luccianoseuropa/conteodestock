@@ -18,6 +18,7 @@ let state = {
   stockCounts: {},       // { code: qty }
   wasteCounts: {},        // { code: qty }
   wasteNotes: {},          // { code: 'motivo del desperdicio' }
+  heladoDetails: { stock: {}, desperdicio: {} }, // { code: { vasquetas, manualKg } } -- solo para HELADO (KG)
   undoStack: [],            // [{ stage, code, prevValue }] -- para el botón Deshacer
   search: '',
   activeCategory: 'Todas',
@@ -37,6 +38,7 @@ function saveCurrent() {
     stockCounts: state.stockCounts,
     wasteCounts: state.wasteCounts,
     wasteNotes: state.wasteNotes,
+    heladoDetails: state.heladoDetails,
   }));
 }
 
@@ -148,6 +150,11 @@ function escapeHtml(str) {
 // Devuelve el objeto de conteo activo según lo que se está contando ahora (stock o desperdicio)
 function activeCounts() {
   return state.stage === 'desperdicio' ? state.wasteCounts : state.stockCounts;
+}
+
+// Devuelve el detalle de vasquetas/kg manual activo (solo se usa para HELADO (KG))
+function activeHeladoDetails() {
+  return state.heladoDetails[state.stage];
 }
 
 function countedItemsCount() {
@@ -343,6 +350,7 @@ function renderLocation() {
       state.stockCounts = current.stockCounts || {};
       state.wasteCounts = current.wasteCounts || {};
       state.wasteNotes = current.wasteNotes || {};
+      state.heladoDetails = current.heladoDetails || { stock: {}, desperdicio: {} };
       state.search = '';
       state.activeCategory = 'Todas';
       state.screen = 'count';
@@ -372,6 +380,7 @@ function renderLocation() {
       state.stockCounts = {};
       state.wasteCounts = {};
       state.wasteNotes = {};
+      state.heladoDetails = { stock: {}, desperdicio: {} };
       state.undoStack = [];
       state.search = '';
       state.activeCategory = 'Todas';
@@ -494,6 +503,34 @@ function buildProductListHtml(filtered) {
     listHtml += `<div class="cat-heading">${escapeHtml(cat)}</div>`;
     grouped[cat].forEach(p => {
       const qty = counts[p.code] || 0;
+      const isHelado = p.category === 'HELADO (KG)';
+
+      if (isHelado) {
+        const detail = activeHeladoDetails()[p.code] || { vasquetas: 0, manualKg: 0 };
+        const avgW = p.avgWeight || 0;
+        const subtotal = detail.vasquetas * avgW;
+        listHtml += `
+          <div class="product-row ${qty > 0 ? 'counted' : ''}" data-row="${p.code}">
+            <div class="product-info">
+              <div class="code">#${p.code} · Kg${avgW ? ` · vasqueta ≈ ${formatQty(avgW)} kg` : ' · peso pendiente'}</div>
+              <div class="name">${escapeHtml(p.name)}</div>
+            </div>
+          </div>
+          <div class="helado-controls" data-helado-wrap="${p.code}">
+            <div class="helado-field">
+              <span class="helado-label">Cant. vasquetas</span>
+              <input type="text" inputmode="numeric" class="helado-input" data-vasq="${p.code}" value="${detail.vasquetas || ''}" placeholder="0">
+            </div>
+            <div class="helado-eq">= ${formatQty(subtotal)} kg</div>
+            <div class="helado-field">
+              <span class="helado-label">Kg manual</span>
+              <input type="text" inputmode="decimal" class="helado-input" data-manualkg="${p.code}" value="${detail.manualKg ? formatQty(detail.manualKg) : ''}" placeholder="0">
+            </div>
+            <div class="helado-total">Total: <b data-total-label="${p.code}">${formatQty(qty)} kg</b></div>
+          </div>`;
+        return;
+      }
+
       const noteHtml = isWaste ? `
         <div class="waste-note-wrap" data-note-wrap="${p.code}">
           <input type="text" class="waste-note-input" placeholder="Motivo del desperdicio (opcional)"
@@ -623,6 +660,43 @@ function attachCountRowHandlers() {
       saveCurrent();
     };
   });
+  document.querySelectorAll('[data-vasq]').forEach(input => {
+    input.onchange = (e) => updateHeladoRow(input.getAttribute('data-vasq'), 'vasquetas', e.target.value);
+    input.onfocus = (e) => e.target.select();
+  });
+  document.querySelectorAll('[data-manualkg]').forEach(input => {
+    input.onchange = (e) => updateHeladoRow(input.getAttribute('data-manualkg'), 'manualKg', e.target.value);
+    input.onfocus = (e) => e.target.select();
+  });
+}
+
+function updateHeladoRow(code, field, rawValue) {
+  const details = activeHeladoDetails();
+  const current = details[code] || { vasquetas: 0, manualKg: 0 };
+  const value = field === 'vasquetas'
+    ? Math.max(0, Math.round(parseQtyInput(rawValue)))
+    : Math.max(0, parseQtyInput(rawValue));
+  current[field] = value;
+  details[code] = current;
+
+  const product = PRODUCTS.find(p => String(p.code) === String(code));
+  const avgW = (product && product.avgWeight) || 0;
+  const total = (current.vasquetas || 0) * avgW + (current.manualKg || 0);
+  activeCounts()[code] = total;
+  saveCurrent();
+
+  const row = document.querySelector(`[data-row="${code}"]`);
+  if (row) row.classList.toggle('counted', total > 0);
+  const wrap = document.querySelector(`[data-helado-wrap="${code}"]`);
+  if (wrap) {
+    const eq = wrap.querySelector('.helado-eq');
+    if (eq) eq.textContent = `= ${formatQty((current.vasquetas || 0) * avgW)} kg`;
+    const totalLabel = wrap.querySelector(`[data-total-label="${code}"]`);
+    if (totalLabel) totalLabel.textContent = `${formatQty(total)} kg`;
+  }
+  const counted = countedItemsCount();
+  document.querySelector('.badge').textContent = `${counted}/${PRODUCTS.length}`;
+  document.querySelector('.count-pill').textContent = `${counted} contados`;
 }
 
 function pushUndo(code, prevValue) {
@@ -886,6 +960,7 @@ function finalizeIfNeeded(data) {
     finishedAt: data.finishedAt,
     generatedBy: data.generatedBy,
     wasteNotes: state.wasteNotes,
+    heladoDetails: state.heladoDetails,
     stockCounts: data.stockCounts,
     wasteCounts: data.wasteCounts,
     itemCountStock: Object.values(data.stockCounts || {}).filter(q => Number(q) > 0).length,
