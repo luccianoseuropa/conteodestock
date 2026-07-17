@@ -28,6 +28,7 @@ const USERS = [
   { username: 'agostina', password: '123456', canDelete: false },
   { username: 'manuel', password: '123456', canDelete: false },
   { username: 'simon', password: '123456', canDelete: false },
+  { username: 'julian', password: '123456', canDelete: false },
 ];
 
 if (typeof module !== 'undefined') { module.exports = { LOCATIONS, USERS }; }
