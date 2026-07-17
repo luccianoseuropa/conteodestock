@@ -209,6 +209,28 @@ function themeToggleButtonHtml() {
   return `<button class="icon-btn" id="themeToggleBtn" title="Cambiar modo">${isDark ? '☀️' : '🌙'}</button>`;
 }
 
+/* ---------------- Vista celular / computadora ---------------- */
+const VIEW_KEY = 'inv_view_mode';
+
+function getViewMode() {
+  return localStorage.getItem(VIEW_KEY) || 'mobile';
+}
+
+function applyViewMode(mode) {
+  document.documentElement.setAttribute('data-view', mode);
+  localStorage.setItem(VIEW_KEY, mode);
+}
+
+function toggleViewMode() {
+  applyViewMode(getViewMode() === 'desktop' ? 'mobile' : 'desktop');
+  render();
+}
+
+function viewToggleButtonHtml() {
+  const isDesktop = getViewMode() === 'desktop';
+  return `<button class="icon-btn" id="viewToggleBtn" title="Vista celular / computadora">${isDesktop ? '📱' : '🖥️'}</button>`;
+}
+
 /* ---------------- Render router ---------------- */
 
 function render() {
@@ -230,6 +252,7 @@ function renderLogin() {
         <div class="sub">Lucciano's</div>
       </div>
       ${themeToggleButtonHtml()}
+      ${viewToggleButtonHtml()}
     </div>
     <div class="home">
       <div class="home-hero">
@@ -248,6 +271,7 @@ function renderLogin() {
   `;
 
   document.getElementById('themeToggleBtn').onclick = toggleTheme;
+  document.getElementById('viewToggleBtn').onclick = toggleViewMode;
 
   const doLogin = () => {
     const user = document.getElementById('loginUser').value.trim();
@@ -324,6 +348,7 @@ function renderLocation() {
       </div>
       <button class="icon-btn" id="changePwBtn" title="Cambiar contraseña">🔑</button>
       ${themeToggleButtonHtml()}
+      ${viewToggleButtonHtml()}
       <button class="icon-btn" id="logoutBtn" title="Cerrar sesión">⎋</button>
     </div>
     <div class="home">
@@ -383,6 +408,7 @@ function renderLocation() {
   };
 
   document.getElementById('themeToggleBtn').onclick = toggleTheme;
+  document.getElementById('viewToggleBtn').onclick = toggleViewMode;
 
   document.getElementById('logoutBtn').onclick = () => {
     clearSession();
@@ -1007,6 +1033,7 @@ function finalizeIfNeeded(data) {
 })();
 
 applyTheme(getTheme());
+applyViewMode(getViewMode());
 
 render();
 
