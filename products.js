@@ -31,6 +31,7 @@ const PRODUCTS = [
   { code: 2014, name: 'MANGO', category: 'HELADO (KG)', unit: 'Kg', avgWeight: 4.1525 },
   { code: 2008, name: 'FRESA', category: 'HELADO (KG)', unit: 'Kg', avgWeight: 3.214 },
   { code: 2009, name: 'MARACUYA', category: 'HELADO (KG)', unit: 'Kg', avgWeight: 3.331 },
+  { code: 90128, name: 'VARIOS HELADO', category: 'HELADO (KG)', unit: 'Kg', avgWeight: null },
   { code: 2205, name: 'FRESA', category: 'ICE POPS CLASSIC', unit: 'Unidad', avgWeight: null },
   { code: 2206, name: 'LIMON', category: 'ICE POPS CLASSIC', unit: 'Unidad', avgWeight: null },
   { code: 2204, name: 'MANGO', category: 'ICE POPS CLASSIC', unit: 'Unidad', avgWeight: null },
