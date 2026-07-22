@@ -8,11 +8,13 @@
 const STORAGE_KEY = 'inv_current_count';
 const HISTORY_KEY = 'inv_history';
 const SESSION_KEY = 'inv_logged_user';
+const PREV_STOCK_KEY = 'inv_prev_stock'; // registro del último stock enviado, por sucursal + modo
 
 let state = {
-  screen: 'login',     // login | location | changePassword | count | askWaste | summary
+  screen: 'login',     // login | location | mode | changePassword | count | askWaste | summary
   currentUser: null,
   location: null,
+  mode: null,           // 'semanal' | 'mensual' -- qué tipo de conteo se está haciendo
   stage: 'stock',       // 'stock' | 'desperdicio' -- qué se está contando ahora mismo
   startedAt: null,
   stockCounts: {},       // { code: qty }
@@ -34,6 +36,7 @@ function saveCurrent() {
   if (!state.location) return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
     location: state.location,
+    mode: state.mode,
     stage: state.stage,
     startedAt: state.startedAt,
     stockCounts: state.stockCounts,
@@ -71,6 +74,32 @@ function deleteHistoryEntry(index) {
   const hist = loadHistory();
   hist.splice(index, 1);
   localStorage.setItem(HISTORY_KEY, JSON.stringify(hist));
+}
+
+/* --- Registro de stock previo ---
+   Cada vez que se finaliza y se comparte un conteo (semanal o mensual),
+   guardamos ese stock como "el último enviado" para esa sucursal + ese
+   modo. La próxima vez que alguien arranca el mismo tipo de conteo en la
+   misma sucursal, puede ver junto a cada producto cuánto había la vez
+   anterior, a modo de referencia (no se usa para calcular nada, es solo
+   informativo). */
+function loadPrevStockAll() {
+  const raw = localStorage.getItem(PREV_STOCK_KEY);
+  if (!raw) return {};
+  try { return JSON.parse(raw); } catch (e) { return {}; }
+}
+
+function getPrevStock(location, mode) {
+  const all = loadPrevStockAll();
+  return (all[location] && all[location][mode]) || null;
+}
+
+function savePrevStock(location, mode, stockCounts, savedAt, generatedBy) {
+  if (!location || !mode) return;
+  const all = loadPrevStockAll();
+  if (!all[location]) all[location] = {};
+  all[location][mode] = { stockCounts: stockCounts || {}, savedAt, generatedBy };
+  localStorage.setItem(PREV_STOCK_KEY, JSON.stringify(all));
 }
 
 function findUser(username) {
@@ -166,8 +195,22 @@ function activeBoxDetails() {
 
 const ICE_POP_CATEGORIES = ['ICE POPS CLASSIC', 'ICE POPS SIN BAÑO', 'ICE POPS BAÑADOS', 'ICE POPS LUXURY', 'ICE POP DUBAI'];
 
+// Categorías habilitadas para el conteo SEMANAL: solo helado y ice pops.
+// El conteo MENSUAL sigue habilitando el listado completo (todas las CATEGORIES).
+const SEMANAL_CATEGORIES = ['HELADO (KG)', ...ICE_POP_CATEGORIES];
+
 function isBoxCategory(category) {
   return category !== 'HELADO (KG)' && !ICE_POP_CATEGORIES.includes(category);
+}
+
+// Categorías visibles según el modo de conteo elegido (semanal/mensual).
+function visibleCategories() {
+  return state.mode === 'semanal' ? CATEGORIES.filter(c => SEMANAL_CATEGORIES.includes(c)) : CATEGORIES;
+}
+
+// Productos habilitados según el modo (para el total del badge, etc.)
+function productsForMode() {
+  return state.mode === 'semanal' ? PRODUCTS.filter(p => SEMANAL_CATEGORIES.includes(p.category)) : PRODUCTS;
 }
 
 function countedItemsCount() {
@@ -249,6 +292,7 @@ function viewToggleButtonHtml() {
 function render() {
   if (state.screen === 'login') return renderLogin();
   if (state.screen === 'location') return renderLocation();
+  if (state.screen === 'mode') return renderMode();
   if (state.screen === 'changePassword') return renderChangePassword();
   if (state.screen === 'count') return renderCount();
   if (state.screen === 'askWaste') return renderAskWaste();
@@ -317,10 +361,11 @@ function renderLocation() {
   if (current && current.location) {
     const nStock = Object.values(current.stockCounts || {}).filter(q => Number(q) > 0).length;
     const nWaste = Object.values(current.wasteCounts || {}).filter(q => Number(q) > 0).length;
+    const modeLabel = current.mode === 'semanal' ? 'Semanal' : 'Mensual';
     resumeHtml = `
       <div class="resume-card" id="resumeCard">
         <div class="info">
-          <b>${escapeHtml(current.location)}</b>
+          <b>${escapeHtml(current.location)} · ${modeLabel}</b>
           <span>Conteo en curso · ${nStock} de stock${nWaste ? `, ${nWaste} de desperdicio` : ''}</span>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
@@ -339,7 +384,7 @@ function renderLocation() {
         ${history.slice(0, 8).map((h, i) => `
           <div class="history-item">
             <div class="info">
-              <b>${escapeHtml(h.location)}</b>
+              <b>${escapeHtml(h.location)}${h.mode ? ` · ${h.mode === 'semanal' ? 'Semanal' : 'Mensual'}` : ''}</b>
               <span>${fmtDate(h.finishedAt)} · ${h.itemCountStock} stock${h.itemCountWaste ? ` · ${h.itemCountWaste} desperdicio` : ''} · por ${escapeHtml(h.generatedBy || '—')}</span>
             </div>
             <div style="display:flex;gap:4px;">
@@ -390,6 +435,7 @@ function renderLocation() {
   if (resumeCard) {
     resumeCard.onclick = () => {
       state.location = current.location;
+      state.mode = current.mode || 'mensual'; // conteos guardados antes de esta versión no tenían modo
       state.stage = current.stage || 'stock';
       state.startedAt = current.startedAt;
       state.stockCounts = current.stockCounts || {};
@@ -434,18 +480,7 @@ function renderLocation() {
   document.querySelectorAll('[data-loc]').forEach(btn => {
     btn.onclick = () => {
       state.location = btn.getAttribute('data-loc');
-      state.stage = 'stock';
-      state.startedAt = new Date().toISOString();
-      state.stockCounts = {};
-      state.wasteCounts = {};
-      state.wasteNotes = {};
-      state.heladoDetails = { stock: {}, desperdicio: {} };
-      state.boxDetails = { stock: {}, desperdicio: {} };
-      state.undoStack = [];
-      state.search = '';
-      state.activeCategory = 'Todas';
-      saveCurrent();
-      state.screen = 'count';
+      state.screen = 'mode';
       render();
     };
   });
@@ -473,6 +508,58 @@ function renderLocation() {
       }
     };
   });
+}
+
+/* ---------------- Elegir tipo de conteo: semanal o mensual ---------------- */
+
+function renderMode() {
+  const prevSemanal = getPrevStock(state.location, 'semanal');
+  const prevMensual = getPrevStock(state.location, 'mensual');
+
+  const prevLineHtml = (prev, label) => prev
+    ? `<p class="empty-hint" style="text-align:left;">📋 Último conteo ${label.toLowerCase()} de esta sucursal: ${fmtDate(prev.savedAt)}${prev.generatedBy ? ` (por ${escapeHtml(prev.generatedBy)})` : ''}. Vas a poder verlo de referencia mientras contás.</p>`
+    : `<p class="empty-hint" style="text-align:left;">Todavía no hay un conteo ${label.toLowerCase()} registrado para esta sucursal.</p>`;
+
+  app.innerHTML = `
+    <div class="topbar">
+      <button class="icon-btn" id="backBtn">←</button>
+      <h1>${escapeHtml(state.location)}</h1>
+      <span style="width:32px"></span>
+    </div>
+    <div class="home">
+      <div class="home-hero">
+        <span class="emoji">🗓️</span>
+        <h2>¿Qué conteo vas a hacer?</h2>
+        <p>Elegí semanal o mensual</p>
+      </div>
+      <button class="btn-primary" id="modeSemanalBtn">📆 Semanal — Helado + Ice Pops</button>
+      ${prevLineHtml(prevSemanal, 'Semanal')}
+      <button class="btn-secondary" id="modeMensualBtn" style="margin-top:6px;">🗂️ Mensual — Todo el listado</button>
+      ${prevLineHtml(prevMensual, 'Mensual')}
+    </div>
+  `;
+
+  document.getElementById('backBtn').onclick = () => { state.screen = 'location'; render(); };
+
+  const startMode = (mode) => {
+    state.mode = mode;
+    state.stage = 'stock';
+    state.startedAt = new Date().toISOString();
+    state.stockCounts = {};
+    state.wasteCounts = {};
+    state.wasteNotes = {};
+    state.heladoDetails = { stock: {}, desperdicio: {} };
+    state.boxDetails = { stock: {}, desperdicio: {} };
+    state.undoStack = [];
+    state.search = '';
+    state.activeCategory = 'Todas';
+    saveCurrent();
+    state.screen = 'count';
+    render();
+  };
+
+  document.getElementById('modeSemanalBtn').onclick = () => startMode('semanal');
+  document.getElementById('modeMensualBtn').onclick = () => startMode('mensual');
 }
 
 /* ---------------- Cambiar contraseña ---------------- */
@@ -538,7 +625,7 @@ function renderChangePassword() {
 
 function getFilteredProducts() {
   const term = state.search.trim().toLowerCase();
-  return PRODUCTS.filter(p => {
+  return productsForMode().filter(p => {
     if (state.activeCategory !== 'Todas' && p.category !== state.activeCategory) return false;
     if (!term) return true;
     return p.name.toLowerCase().includes(term) || String(p.code).includes(term);
@@ -548,6 +635,18 @@ function getFilteredProducts() {
 function buildProductListHtml(filtered) {
   const counts = activeCounts();
   const isWaste = state.stage === 'desperdicio';
+  // Solo mostramos referencia de stock previo durante el conteo de Stock
+  // (no tiene sentido para Desperdicio), comparando sucursal + modo actual.
+  const prevStock = (!isWaste && getPrevStock(state.location, state.mode)) || null;
+  const prevQty = (code) => {
+    if (!prevStock) return null;
+    const v = Number(prevStock.stockCounts[code] || 0);
+    return v > 0 ? v : null;
+  };
+  const prevHintHtml = (code, unit) => {
+    const v = prevQty(code);
+    return v !== null ? `<span class="prev-hint">Antes: ${formatQty(v)}${unit ? ' ' + escapeHtml(unit) : ''}</span>` : '';
+  };
   const grouped = {};
   filtered.forEach(p => {
     if (!grouped[p.category]) grouped[p.category] = [];
@@ -576,6 +675,7 @@ function buildProductListHtml(filtered) {
             <div class="product-info">
               <div class="code">#${p.code} · Kg</div>
               <div class="name">${escapeHtml(p.name)}</div>
+              ${prevHintHtml(p.code, 'kg')}
             </div>
           </div>
           <div class="helado-controls" data-helado-wrap="${p.code}">
@@ -606,6 +706,7 @@ function buildProductListHtml(filtered) {
             <div class="product-info">
               <div class="code">#${p.code} · ${escapeHtml(p.unit)}</div>
               <div class="name">${escapeHtml(p.name)}</div>
+              ${prevHintHtml(p.code, p.unit)}
             </div>
           </div>
           <div class="helado-controls" data-box-wrap="${p.code}">
@@ -637,6 +738,7 @@ function buildProductListHtml(filtered) {
           <div class="product-info">
             <div class="code">#${p.code} · ${escapeHtml(p.unit)}</div>
             <div class="name">${escapeHtml(p.name)}</div>
+            ${prevHintHtml(p.code, p.unit)}
           </div>
           <div class="qty-controls">
             <button class="qty-btn minus" data-minus="${p.code}">−</button>
@@ -661,9 +763,9 @@ function renderCount() {
       <button class="icon-btn" id="backBtn">←</button>
       <div style="text-align:center;">
         <h1>${escapeHtml(state.location)}</h1>
-        <div class="sub">${isWaste ? 'Contando Desperdicio' : 'Contando Stock'} · guardado automático</div>
+        <div class="sub">${state.mode === 'semanal' ? 'Semanal' : 'Mensual'} · ${isWaste ? 'Contando Desperdicio' : 'Contando Stock'} · guardado automático</div>
       </div>
-      <span class="badge">${counted}/${PRODUCTS.length}</span>
+      <span class="badge">${counted}/${productsForMode().length}</span>
     </div>
     <div class="count-controls">
       <div class="search-wrap">
@@ -672,7 +774,7 @@ function renderCount() {
       </div>
       <div class="chips" id="chips">
         <button class="chip ${state.activeCategory === 'Todas' ? 'active' : ''}" data-cat="Todas">Todas</button>
-        ${CATEGORIES.map(c => `<button class="chip ${state.activeCategory === c ? 'active' : ''}" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('')}
+        ${visibleCategories().map(c => `<button class="chip ${state.activeCategory === c ? 'active' : ''}" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('')}
       </div>
     </div>
     <div class="product-list">${listHtml}</div>
@@ -733,7 +835,7 @@ function renderCountListOnly() {
   const filtered = getFilteredProducts();
   const counted = countedItemsCount();
   document.querySelector('.product-list').innerHTML = buildProductListHtml(filtered);
-  document.querySelector('.badge').textContent = `${counted}/${PRODUCTS.length}`;
+  document.querySelector('.badge').textContent = `${counted}/${productsForMode().length}`;
   document.querySelector('.count-pill').textContent = `${counted} contados`;
   attachCountRowHandlers();
 }
@@ -805,7 +907,7 @@ function updateHeladoRow(code, field, rawValue) {
     if (totalLabel) totalLabel.textContent = `${formatQty(total)} kg`;
   }
   const counted = countedItemsCount();
-  document.querySelector('.badge').textContent = `${counted}/${PRODUCTS.length}`;
+  document.querySelector('.badge').textContent = `${counted}/${productsForMode().length}`;
   document.querySelector('.count-pill').textContent = `${counted} contados`;
 }
 
@@ -834,7 +936,7 @@ function updateBoxRow(code, field, rawValue) {
     if (totalLabel) totalLabel.textContent = `${formatQty(total)} ${unit}`;
   }
   const counted = countedItemsCount();
-  document.querySelector('.badge').textContent = `${counted}/${PRODUCTS.length}`;
+  document.querySelector('.badge').textContent = `${counted}/${productsForMode().length}`;
   document.querySelector('.count-pill').textContent = `${counted} contados`;
 }
 
@@ -883,7 +985,7 @@ function updateRowUI(code, qty) {
   const input = row.querySelector('[data-qty]');
   if (input && document.activeElement !== input) input.value = formatQty(qty);
   const counted = countedItemsCount();
-  document.querySelector('.badge').textContent = `${counted}/${PRODUCTS.length}`;
+  document.querySelector('.badge').textContent = `${counted}/${productsForMode().length}`;
   document.querySelector('.count-pill').textContent = `${counted} contados`;
 }
 
@@ -935,6 +1037,7 @@ function renderSummary() {
     ? state.viewingHistoryId
     : {
         location: state.location,
+        mode: state.mode,
         stockCounts: state.stockCounts,
         wasteCounts: state.wasteCounts,
         finishedAt: new Date().toISOString(),
@@ -998,7 +1101,7 @@ function renderSummary() {
       <div class="summary-hero">
         <span class="check">✅</span>
         <h2>${escapeHtml(data.location)}</h2>
-        <p>${fmtDate(data.finishedAt)} · Generado por ${escapeHtml(data.generatedBy || '—')}</p>
+        <p>${data.mode === 'semanal' ? 'Conteo Semanal' : 'Conteo Mensual'} · ${fmtDate(data.finishedAt)} · Generado por ${escapeHtml(data.generatedBy || '—')}</p>
       </div>
       <div class="summary-stats">
         <div class="stat-card"><div class="num">${stockItems.length}</div><div class="lbl">Productos (Stock)</div></div>
@@ -1035,7 +1138,8 @@ function renderSummary() {
 async function shareCount(data, stockItems, wasteItems, isHistory) {
   const loc = sanitizeForFilename(data.location);
   const dateStr = fmtDateShort(data.finishedAt);
-  const filename = `Stock - ${loc} - ${dateStr}.xlsx`;
+  const modeLabel = data.mode === 'semanal' ? 'Semanal' : 'Mensual';
+  const filename = `Stock ${modeLabel} - ${loc} - ${dateStr}.xlsx`;
 
   const header = ['Código', 'Producto', 'Categoría', 'Unidad de medida', 'Cantidad contada', 'Sucursal'];
   const wasteHeader = [...header, 'Motivo'];
@@ -1043,7 +1147,7 @@ async function shareCount(data, stockItems, wasteItems, isHistory) {
   const toWasteRows = (items) => items.map(p => [p.code, p.name, p.category, p.unit, Number(p.qty), data.location, p.note || '']);
   const infoRows = (sheetLabel) => [
     [`Generado por: ${data.generatedBy || '—'}`],
-    [`Sucursal: ${data.location}    Fecha: ${fmtDate(data.finishedAt)}    Pestaña: ${sheetLabel}`],
+    [`Sucursal: ${data.location}    Conteo: ${modeLabel}    Fecha: ${fmtDate(data.finishedAt)}    Pestaña: ${sheetLabel}`],
     [],
   ];
 
@@ -1076,7 +1180,7 @@ async function shareCount(data, stockItems, wasteItems, isHistory) {
       try {
         await navigator.share({
           title: filename,
-          text: `Conteo de ${data.location}${wasteItems.length ? ' (Stock + Desperdicio)' : ' (Stock)'} · Generado por ${data.generatedBy || '—'}`,
+          text: `Conteo ${modeLabel} de ${data.location}${wasteItems.length ? ' (Stock + Desperdicio)' : ' (Stock)'} · Generado por ${data.generatedBy || '—'}`,
           files: [file],
         });
         usedShare = true;
@@ -1111,6 +1215,7 @@ function finalizeIfNeeded(data) {
   state._finalized = true;
   saveHistory({
     location: data.location,
+    mode: state.mode,
     finishedAt: data.finishedAt,
     generatedBy: data.generatedBy,
     wasteNotes: state.wasteNotes,
@@ -1121,6 +1226,9 @@ function finalizeIfNeeded(data) {
     itemCountStock: Object.values(data.stockCounts || {}).filter(q => Number(q) > 0).length,
     itemCountWaste: Object.values(data.wasteCounts || {}).filter(q => Number(q) > 0).length,
   });
+  // Guardamos este stock como referencia ("registro de stock previo") para
+  // la próxima vez que se haga un conteo del mismo tipo en esta sucursal.
+  savePrevStock(data.location, state.mode, data.stockCounts, data.finishedAt, data.generatedBy);
   clearCurrent();
 }
 
