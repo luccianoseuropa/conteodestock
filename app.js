@@ -19,6 +19,7 @@ let state = {
   wasteCounts: {},        // { code: qty }
   wasteNotes: {},          // { code: 'motivo del desperdicio' }
   heladoDetails: { stock: {}, desperdicio: {} }, // { code: { vasquetas, manualKg } } -- solo para HELADO (KG)
+  boxDetails: { stock: {}, desperdicio: {} },      // { code: { cajas, udXCaja, sueltas } } -- para el resto (menos ice pops)
   undoStack: [],            // [{ stage, code, prevValue }] -- para el botón Deshacer
   search: '',
   activeCategory: 'Todas',
@@ -39,6 +40,7 @@ function saveCurrent() {
     wasteCounts: state.wasteCounts,
     wasteNotes: state.wasteNotes,
     heladoDetails: state.heladoDetails,
+    boxDetails: state.boxDetails,
   }));
 }
 
@@ -155,6 +157,17 @@ function activeCounts() {
 // Devuelve el detalle de vasquetas/kg manual activo (solo se usa para HELADO (KG))
 function activeHeladoDetails() {
   return state.heladoDetails[state.stage];
+}
+
+// Devuelve el detalle de cajas/ud por caja/sueltas activo (para todo lo que no sea helado ni ice pops)
+function activeBoxDetails() {
+  return state.boxDetails[state.stage];
+}
+
+const ICE_POP_CATEGORIES = ['ICE POPS CLASSIC', 'ICE POPS SIN BAÑO', 'ICE POPS BAÑADOS', 'ICE POPS LUXURY', 'ICE POP DUBAI'];
+
+function isBoxCategory(category) {
+  return category !== 'HELADO (KG)' && !ICE_POP_CATEGORIES.includes(category);
 }
 
 function countedItemsCount() {
@@ -383,6 +396,7 @@ function renderLocation() {
       state.wasteCounts = current.wasteCounts || {};
       state.wasteNotes = current.wasteNotes || {};
       state.heladoDetails = current.heladoDetails || { stock: {}, desperdicio: {} };
+      state.boxDetails = current.boxDetails || { stock: {}, desperdicio: {} };
       state.search = '';
       state.activeCategory = 'Todas';
       state.screen = 'count';
@@ -426,6 +440,7 @@ function renderLocation() {
       state.wasteCounts = {};
       state.wasteNotes = {};
       state.heladoDetails = { stock: {}, desperdicio: {} };
+      state.boxDetails = { stock: {}, desperdicio: {} };
       state.undoStack = [];
       state.search = '';
       state.activeCategory = 'Todas';
@@ -582,6 +597,36 @@ function buildProductListHtml(filtered) {
         return;
       }
 
+      const isBox = isBoxCategory(p.category);
+      if (isBox) {
+        const detail = activeBoxDetails()[p.code] || { cajas: 0, udXCaja: 0, sueltas: 0 };
+        const subtotal = (detail.cajas || 0) * (detail.udXCaja || 0);
+        listHtml += `
+          <div class="product-row ${qty > 0 ? 'counted' : ''}" data-row="${p.code}">
+            <div class="product-info">
+              <div class="code">#${p.code} · ${escapeHtml(p.unit)}</div>
+              <div class="name">${escapeHtml(p.name)}</div>
+            </div>
+          </div>
+          <div class="helado-controls" data-box-wrap="${p.code}">
+            <div class="helado-field">
+              <span class="helado-label">Cant. cajas</span>
+              <input type="text" inputmode="numeric" class="helado-input" data-cajas="${p.code}" value="${detail.cajas || ''}" placeholder="0">
+            </div>
+            <div class="helado-field">
+              <span class="helado-label">Ud x caja</span>
+              <input type="text" inputmode="numeric" class="helado-input" data-udxcaja="${p.code}" value="${detail.udXCaja || ''}" placeholder="0">
+            </div>
+            <div class="helado-eq">= ${formatQty(subtotal)} ud</div>
+            <div class="helado-field">
+              <span class="helado-label">Ud sueltas</span>
+              <input type="text" inputmode="decimal" class="helado-input" data-sueltas="${p.code}" value="${detail.sueltas ? formatQty(detail.sueltas) : ''}" placeholder="0">
+            </div>
+            <div class="helado-total">Total: <b data-total-label="${p.code}">${formatQty(qty)} ${escapeHtml(p.unit)}</b></div>
+          </div>`;
+        return;
+      }
+
       const noteHtml = isWaste ? `
         <div class="waste-note-wrap" data-note-wrap="${p.code}">
           <input type="text" class="waste-note-input" placeholder="Motivo del desperdicio (opcional)"
@@ -723,6 +768,18 @@ function attachCountRowHandlers() {
     input.onchange = (e) => updateHeladoRow(input.getAttribute('data-manualkg'), 'manualKg', e.target.value);
     input.onfocus = (e) => e.target.select();
   });
+  document.querySelectorAll('[data-cajas]').forEach(input => {
+    input.onchange = (e) => updateBoxRow(input.getAttribute('data-cajas'), 'cajas', e.target.value);
+    input.onfocus = (e) => e.target.select();
+  });
+  document.querySelectorAll('[data-udxcaja]').forEach(input => {
+    input.onchange = (e) => updateBoxRow(input.getAttribute('data-udxcaja'), 'udXCaja', e.target.value);
+    input.onfocus = (e) => e.target.select();
+  });
+  document.querySelectorAll('[data-sueltas]').forEach(input => {
+    input.onchange = (e) => updateBoxRow(input.getAttribute('data-sueltas'), 'sueltas', e.target.value);
+    input.onfocus = (e) => e.target.select();
+  });
 }
 
 function updateHeladoRow(code, field, rawValue) {
@@ -746,6 +803,35 @@ function updateHeladoRow(code, field, rawValue) {
     if (eq) eq.textContent = `= ${formatQty((current.vasquetas || 0) * (current.pesoProm || 0))} kg`;
     const totalLabel = wrap.querySelector(`[data-total-label="${code}"]`);
     if (totalLabel) totalLabel.textContent = `${formatQty(total)} kg`;
+  }
+  const counted = countedItemsCount();
+  document.querySelector('.badge').textContent = `${counted}/${PRODUCTS.length}`;
+  document.querySelector('.count-pill').textContent = `${counted} contados`;
+}
+
+function updateBoxRow(code, field, rawValue) {
+  const details = activeBoxDetails();
+  const current = details[code] || { cajas: 0, udXCaja: 0, sueltas: 0 };
+  const value = field === 'sueltas'
+    ? Math.max(0, parseQtyInput(rawValue))
+    : Math.max(0, Math.round(parseQtyInput(rawValue)));
+  current[field] = value;
+  details[code] = current;
+
+  const total = (current.cajas || 0) * (current.udXCaja || 0) + (current.sueltas || 0);
+  activeCounts()[code] = total;
+  saveCurrent();
+
+  const product = PRODUCTS.find(p => String(p.code) === String(code));
+  const unit = (product && product.unit) || 'ud';
+  const row = document.querySelector(`[data-row="${code}"]`);
+  if (row) row.classList.toggle('counted', total > 0);
+  const wrap = document.querySelector(`[data-box-wrap="${code}"]`);
+  if (wrap) {
+    const eq = wrap.querySelector('.helado-eq');
+    if (eq) eq.textContent = `= ${formatQty((current.cajas || 0) * (current.udXCaja || 0))} ud`;
+    const totalLabel = wrap.querySelector(`[data-total-label="${code}"]`);
+    if (totalLabel) totalLabel.textContent = `${formatQty(total)} ${unit}`;
   }
   const counted = countedItemsCount();
   document.querySelector('.badge').textContent = `${counted}/${PRODUCTS.length}`;
@@ -1029,6 +1115,7 @@ function finalizeIfNeeded(data) {
     generatedBy: data.generatedBy,
     wasteNotes: state.wasteNotes,
     heladoDetails: state.heladoDetails,
+    boxDetails: state.boxDetails,
     stockCounts: data.stockCounts,
     wasteCounts: data.wasteCounts,
     itemCountStock: Object.values(data.stockCounts || {}).filter(q => Number(q) > 0).length,
