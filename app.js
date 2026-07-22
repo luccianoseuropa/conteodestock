@@ -962,6 +962,12 @@ async function shareCount(data, stockItems, wasteItems, isHistory) {
   ];
 
   let shared = false;
+
+  if (typeof XLSX === 'undefined') {
+    toast('La app todavía está terminando de cargar. Esperá unos segundos y probá de nuevo.');
+    return;
+  }
+
   try {
     const wb = XLSX.utils.book_new();
 

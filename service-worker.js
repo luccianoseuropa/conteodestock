@@ -1,4 +1,4 @@
-const CACHE_NAME = 'inventario-cache-v17';
+const CACHE_NAME = 'inventario-cache-v18';
 const FILES_TO_CACHE = [
   './',
   './index.html',
@@ -7,6 +7,7 @@ const FILES_TO_CACHE = [
   './config.js',
   './products.js',
   './manifest.json',
+  './xlsx.full.min.js',
   './icon-192.png',
   './icon-512.png',
   './icon-maskable-192.png',
