@@ -985,18 +985,27 @@ async function shareCount(data, stockItems, wasteItems, isHistory) {
     const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const file = new File([blob], filename, { type: blob.type });
 
+    let usedShare = false;
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({
-        title: filename,
-        text: `Conteo de ${data.location}${wasteItems.length ? ' (Stock + Desperdicio)' : ' (Stock)'} · Generado por ${data.generatedBy || '—'}`,
-        files: [file],
-      });
-      shared = true;
-    } else {
-      XLSX.writeFile(wb, filename);
-      toast('Tu navegador no permite compartir el archivo directo: se descargó el Excel.');
-      shared = true;
+      try {
+        await navigator.share({
+          title: filename,
+          text: `Conteo de ${data.location}${wasteItems.length ? ' (Stock + Desperdicio)' : ' (Stock)'} · Generado por ${data.generatedBy || '—'}`,
+          files: [file],
+        });
+        usedShare = true;
+      } catch (shareErr) {
+        // Si la persona cancela el menú de compartir, no insistimos con la descarga.
+        if (shareErr && shareErr.name === 'AbortError') { return; }
+        // Cualquier otro error del share (falla del sistema, sin apps compatibles,
+        // navegador de escritorio que dice que sí pero no puede, etc.) -> descargamos directo.
+      }
     }
+    if (!usedShare) {
+      XLSX.writeFile(wb, filename);
+      toast('Se descargó el Excel a tu dispositivo (no se pudo compartir directo).');
+    }
+    shared = true;
   } catch (err) {
     if (err && err.name === 'AbortError') { return; }
     toast('No se pudo generar el Excel. Probá de nuevo.');
