@@ -152,6 +152,37 @@ function setPasswordOverride(username, newPassword) {
   localStorage.setItem(PW_OVERRIDES_KEY, JSON.stringify(overrides));
 }
 
+/* ---------------- Íconos SVG inline ----------------
+   Reemplazan los emojis usados como íconos funcionales (flechas, buscar,
+   candado, tema, compartir, etc). Los emojis "decorativos" grandes de las
+   pantallas de bienvenida (🍦🔒🗓️🗑️) se dejan igual, a propósito, para
+   mantener un toque cálido/humano en esas pantallas. */
+const ICONS = {
+  chevronLeft: '<svg class="icon-svg" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>',
+  chevronRight: '<svg class="icon-svg" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>',
+  moon: '<svg class="icon-svg" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1111.2 3 7 7 0 0021 12.8z"/></svg>',
+  sun: '<svg class="icon-svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2 12h2.5M19.5 12H22M4.2 19.8L6 18M18 6l1.8-1.8"/></svg>',
+  phone: '<svg class="icon-svg" viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18.5h2"/></svg>',
+  desktop: '<svg class="icon-svg" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="13" rx="1.5"/><path d="M8 21h8M12 17v4"/></svg>',
+  key: '<svg class="icon-svg" viewBox="0 0 24 24"><circle cx="8" cy="9" r="4.5"/><path d="M11.3 12.2L21 21.9M17.3 17.9l2.6-2.6M14.6 15.2l2.1-2.1"/></svg>',
+  logout: '<svg class="icon-svg" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>',
+  search: '<svg class="icon-svg" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.6-4.6"/></svg>',
+  undo: '<svg class="icon-svg" viewBox="0 0 24 24"><path d="M4 10h10a5 5 0 010 10H9"/><path d="M9 5L4 10l5 5"/></svg>',
+  share: '<svg class="icon-svg" viewBox="0 0 24 24"><path d="M12 15V3"/><path d="M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 002 2h10a2 2 0 002-2v-6"/></svg>',
+  checkCircle: '<svg class="icon-svg" viewBox="0 0 24 24" style="stroke-width:1.6;"><circle cx="12" cy="12" r="10"/><path d="M7.5 12.5l3 3 6-6.5"/></svg>',
+  building: '<svg class="icon-svg" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 8h1M14 8h1M9 12h1M14 12h1M9 16h1M14 16h1"/></svg>',
+};
+
+// Paleta cíclica para colorear categorías (barra izquierda de cada producto,
+// punto del encabezado de categoría y barras del resumen final). Se asigna
+// según la posición de la categoría en CATEGORIES, así el mismo nombre
+// siempre tiene el mismo color en toda la app.
+function categoryColor(category) {
+  const idx = CATEGORIES.indexOf(category);
+  const n = idx >= 0 ? idx : 0;
+  return `var(--cat-${n % 10})`;
+}
+
 /* ---------------- Helpers ---------------- */
 
 function fmtDate(iso) {
@@ -262,7 +293,7 @@ function toggleTheme() {
 
 function themeToggleButtonHtml() {
   const isDark = getTheme() === 'dark';
-  return `<button class="icon-btn" id="themeToggleBtn" title="Cambiar modo">${isDark ? '☀️' : '🌙'}</button>`;
+  return `<button class="icon-btn" id="themeToggleBtn" title="Cambiar modo">${isDark ? ICONS.sun : ICONS.moon}</button>`;
 }
 
 /* ---------------- Vista celular / computadora ---------------- */
@@ -284,7 +315,7 @@ function toggleViewMode() {
 
 function viewToggleButtonHtml() {
   const isDesktop = getViewMode() === 'desktop';
-  return `<button class="icon-btn" id="viewToggleBtn" title="Vista celular / computadora">${isDesktop ? '📱' : '🖥️'}</button>`;
+  return `<button class="icon-btn" id="viewToggleBtn" title="Vista celular / computadora">${isDesktop ? ICONS.phone : ICONS.desktop}</button>`;
 }
 
 /* ---------------- Render router ---------------- */
@@ -369,7 +400,7 @@ function renderLocation() {
           <span>Conteo en curso · ${nStock} de stock${nWaste ? `, ${nWaste} de desperdicio` : ''}</span>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
-          <span class="go">Continuar →</span>
+          <span class="go" style="display:flex;align-items:center;gap:4px;">Continuar ${ICONS.chevronRight}</span>
           <button id="discardCurrentBtn" style="font-size:11.5px;color:var(--danger);font-weight:700;">Descartar</button>
         </div>
       </div>`;
@@ -404,10 +435,10 @@ function renderLocation() {
         <h1>📋 Conteo de Inventario</h1>
         <div class="sub">Lucciano's · ${escapeHtml(state.currentUser || '')}</div>
       </div>
-      <button class="icon-btn" id="changePwBtn" title="Cambiar contraseña">🔑</button>
+      <button class="icon-btn" id="changePwBtn" title="Cambiar contraseña">${ICONS.key}</button>
       ${themeToggleButtonHtml()}
       ${viewToggleButtonHtml()}
-      <button class="icon-btn" id="logoutBtn" title="Cerrar sesión">⎋</button>
+      <button class="icon-btn" id="logoutBtn" title="Cerrar sesión">${ICONS.logout}</button>
     </div>
     <div class="home">
       <div class="home-hero">
@@ -418,12 +449,14 @@ function renderLocation() {
       ${resumeHtml}
       <div class="loc-list" style="padding:0;">
         ${LOCATIONS.map(loc => `
-          <button class="loc-item" data-loc="${escapeHtml(loc.name)}">
-            ${loc.photo
-              ? `<img class="loc-photo" src="${escapeHtml(loc.photo)}" alt="${escapeHtml(loc.name)}">`
-              : `<span class="loc-photo loc-photo-placeholder">🏬</span>`}
-            <span class="loc-name">${escapeHtml(loc.name)}</span>
-            <span class="arrow">→</span>
+          <button class="loc-item ${loc.photo ? '' : 'no-photo'}" data-loc="${escapeHtml(loc.name)}">
+            <div class="loc-bg" ${loc.photo ? `style="background-image:url('${escapeHtml(loc.photo)}')"` : ''}></div>
+            ${!loc.photo ? `<div class="loc-building-icon">${ICONS.building}</div>` : ''}
+            <div class="loc-overlay"></div>
+            <div class="loc-content">
+              <span class="loc-name">${escapeHtml(loc.name)}</span>
+              <span class="arrow">${ICONS.chevronRight}</span>
+            </div>
           </button>
         `).join('')}
       </div>
@@ -522,7 +555,7 @@ function renderMode() {
 
   app.innerHTML = `
     <div class="topbar">
-      <button class="icon-btn" id="backBtn">←</button>
+      <button class="icon-btn" id="backBtn">${ICONS.chevronLeft}</button>
       <h1>${escapeHtml(state.location)}</h1>
       <span style="width:32px"></span>
     </div>
@@ -567,7 +600,7 @@ function renderMode() {
 function renderChangePassword() {
   app.innerHTML = `
     <div class="topbar">
-      <button class="icon-btn" id="backBtn">←</button>
+      <button class="icon-btn" id="backBtn">${ICONS.chevronLeft}</button>
       <h1>Cambiar contraseña</h1>
       <span style="width:32px"></span>
     </div>
@@ -662,16 +695,18 @@ function buildProductListHtml(filtered) {
   let listHtml = '';
   CATEGORIES.forEach(cat => {
     if (!grouped[cat]) return;
-    listHtml += `<div class="cat-heading">${escapeHtml(cat)}</div>`;
+    const catColor = categoryColor(cat);
+    listHtml += `<div class="cat-heading"><span class="cat-dot" style="--cat-color:${catColor}"></span>${escapeHtml(cat)}</div>`;
     grouped[cat].forEach(p => {
       const qty = counts[p.code] || 0;
       const isHelado = p.category === 'HELADO (KG)';
+      const rowStyle = `style="--cat-color:${categoryColor(p.category)}"`;
 
       if (isHelado) {
         const detail = activeHeladoDetails()[p.code] || { vasquetas: 0, pesoProm: 0, manualKg: 0 };
         const subtotal = (detail.vasquetas || 0) * (detail.pesoProm || 0);
         listHtml += `
-          <div class="product-row ${qty > 0 ? 'counted' : ''}" data-row="${p.code}">
+          <div class="product-row ${qty > 0 ? 'counted' : ''}" data-row="${p.code}" ${rowStyle}>
             <div class="product-info">
               <div class="code">#${p.code} · Kg</div>
               <div class="name">${escapeHtml(p.name)}</div>
@@ -702,7 +737,7 @@ function buildProductListHtml(filtered) {
         const detail = activeBoxDetails()[p.code] || { cajas: 0, udXCaja: 0, sueltas: 0 };
         const subtotal = (detail.cajas || 0) * (detail.udXCaja || 0);
         listHtml += `
-          <div class="product-row ${qty > 0 ? 'counted' : ''}" data-row="${p.code}">
+          <div class="product-row ${qty > 0 ? 'counted' : ''}" data-row="${p.code}" ${rowStyle}>
             <div class="product-info">
               <div class="code">#${p.code} · ${escapeHtml(p.unit)}</div>
               <div class="name">${escapeHtml(p.name)}</div>
@@ -734,7 +769,7 @@ function buildProductListHtml(filtered) {
             value="${escapeHtml(state.wasteNotes[p.code] || '')}" data-note="${p.code}">
         </div>` : '';
       listHtml += `
-        <div class="product-row ${qty > 0 ? 'counted' : ''}" data-row="${p.code}">
+        <div class="product-row ${qty > 0 ? 'counted' : ''}" data-row="${p.code}" ${rowStyle}>
           <div class="product-info">
             <div class="code">#${p.code} · ${escapeHtml(p.unit)}</div>
             <div class="name">${escapeHtml(p.name)}</div>
@@ -760,7 +795,7 @@ function renderCount() {
 
   app.innerHTML = `
     <div class="topbar">
-      <button class="icon-btn" id="backBtn">←</button>
+      <button class="icon-btn" id="backBtn">${ICONS.chevronLeft}</button>
       <div style="text-align:center;">
         <h1>${escapeHtml(state.location)}</h1>
         <div class="sub">${state.mode === 'semanal' ? 'Semanal' : 'Mensual'} · ${isWaste ? 'Contando Desperdicio' : 'Contando Stock'} · guardado automático</div>
@@ -768,8 +803,9 @@ function renderCount() {
       <span class="badge">${counted}/${productsForMode().length}</span>
     </div>
     <div class="count-controls">
+      <div class="progress-track"><div class="progress-fill" style="width:${productsForMode().length ? Math.round(counted / productsForMode().length * 100) : 0}%"></div></div>
       <div class="search-wrap">
-        <span class="icon">🔎</span>
+        <span class="icon">${ICONS.search}</span>
         <input type="text" id="searchInput" placeholder="Buscar producto o código..." value="${escapeHtml(state.search)}">
       </div>
       <div class="chips" id="chips">
@@ -779,7 +815,7 @@ function renderCount() {
     </div>
     <div class="product-list">${listHtml}</div>
     <div class="footer-bar">
-      <button class="qty-btn" id="undoBtn" title="Deshacer último cambio" style="width:44px;height:44px;flex:none;">↩️</button>
+      <button class="qty-btn" id="undoBtn" title="Deshacer último cambio" style="width:44px;height:44px;flex:none;">${ICONS.undo}</button>
       <span class="count-pill">${counted} contados</span>
       <button class="btn-primary" id="finishBtn">${isWaste ? 'Finalizar desperdicio' : 'Finalizar conteo'}</button>
     </div>
@@ -829,14 +865,25 @@ function renderCount() {
   };
 }
 
+// Actualiza el badge del header, la pastilla del footer y la barra de
+// progreso, sin volver a dibujar toda la pantalla.
+function updateProgressUI() {
+  const counted = countedItemsCount();
+  const total = productsForMode().length;
+  const badge = document.querySelector('.badge');
+  if (badge) badge.textContent = `${counted}/${total}`;
+  const pill = document.querySelector('.count-pill');
+  if (pill) pill.textContent = `${counted} contados`;
+  const fill = document.querySelector('.progress-fill');
+  if (fill) fill.style.width = `${total ? Math.round(counted / total * 100) : 0}%`;
+}
+
 // Re-render only the product list + badge/footer, without touching the
 // search input, the chips bar or the page scroll position.
 function renderCountListOnly() {
   const filtered = getFilteredProducts();
-  const counted = countedItemsCount();
   document.querySelector('.product-list').innerHTML = buildProductListHtml(filtered);
-  document.querySelector('.badge').textContent = `${counted}/${productsForMode().length}`;
-  document.querySelector('.count-pill').textContent = `${counted} contados`;
+  updateProgressUI();
   attachCountRowHandlers();
 }
 
@@ -906,9 +953,7 @@ function updateHeladoRow(code, field, rawValue) {
     const totalLabel = wrap.querySelector(`[data-total-label="${code}"]`);
     if (totalLabel) totalLabel.textContent = `${formatQty(total)} kg`;
   }
-  const counted = countedItemsCount();
-  document.querySelector('.badge').textContent = `${counted}/${productsForMode().length}`;
-  document.querySelector('.count-pill').textContent = `${counted} contados`;
+  updateProgressUI();
 }
 
 function updateBoxRow(code, field, rawValue) {
@@ -935,9 +980,7 @@ function updateBoxRow(code, field, rawValue) {
     const totalLabel = wrap.querySelector(`[data-total-label="${code}"]`);
     if (totalLabel) totalLabel.textContent = `${formatQty(total)} ${unit}`;
   }
-  const counted = countedItemsCount();
-  document.querySelector('.badge').textContent = `${counted}/${productsForMode().length}`;
-  document.querySelector('.count-pill').textContent = `${counted} contados`;
+  updateProgressUI();
 }
 
 function pushUndo(code, prevValue) {
@@ -984,9 +1027,7 @@ function updateRowUI(code, qty) {
   row.classList.toggle('counted', qty > 0);
   const input = row.querySelector('[data-qty]');
   if (input && document.activeElement !== input) input.value = formatQty(qty);
-  const counted = countedItemsCount();
-  document.querySelector('.badge').textContent = `${counted}/${productsForMode().length}`;
-  document.querySelector('.count-pill').textContent = `${counted} contados`;
+  updateProgressUI();
 }
 
 /* ---------------- ¿Tuviste desperdicios? ---------------- */
@@ -995,7 +1036,7 @@ function renderAskWaste() {
   const nStock = countedItemsCount(); // en este punto state.stage sigue en 'stock'
   app.innerHTML = `
     <div class="topbar">
-      <button class="icon-btn" id="backBtn">←</button>
+      <button class="icon-btn" id="backBtn">${ICONS.chevronLeft}</button>
       <h1>${escapeHtml(state.location)}</h1>
       <span style="width:32px"></span>
     </div>
@@ -1069,12 +1110,19 @@ function renderSummary() {
   const buildCategorySummaryHtml = (items) => {
     const cats = buildCategorySummary(items);
     if (!cats.length) return '';
-    return `<div class="summary-table" style="margin-bottom:10px;">${cats.map(c => `
-      <div class="summary-row">
-        <div class="name">${escapeHtml(c.category)}</div>
-        <div class="qty">${formatQty(c.total)} ${escapeHtml(c.unit)}</div>
-      </div>
-    `).join('')}</div>`;
+    const maxTotal = Math.max(...cats.map(c => c.total), 1);
+    return `<div class="cat-chart">${cats.map(c => {
+      const color = categoryColor(c.category);
+      const pct = Math.max(4, Math.round(c.total / maxTotal * 100));
+      return `
+      <div class="cat-bar-row">
+        <div class="cat-bar-top">
+          <span class="cat-name"><span class="cat-dot" style="--cat-color:${color}"></span>${escapeHtml(c.category)}</span>
+          <span class="cat-total">${formatQty(c.total)} ${escapeHtml(c.unit)}</span>
+        </div>
+        <div class="cat-bar-track"><div class="cat-bar-fill" style="width:${pct}%;--cat-color:${color}"></div></div>
+      </div>`;
+    }).join('')}</div>`;
   };
 
   const buildRows = (items, withNotes) => items.map(p => `
@@ -1093,13 +1141,13 @@ function renderSummary() {
 
   app.innerHTML = `
     <div class="topbar">
-      <button class="icon-btn" id="backBtn">←</button>
+      <button class="icon-btn" id="backBtn">${ICONS.chevronLeft}</button>
       <h1>Resumen</h1>
       <span style="width:32px"></span>
     </div>
     <div class="summary">
       <div class="summary-hero">
-        <span class="check">✅</span>
+        <span class="check-icon">${ICONS.checkCircle}</span>
         <h2>${escapeHtml(data.location)}</h2>
         <p>${data.mode === 'semanal' ? 'Conteo Semanal' : 'Conteo Mensual'} · ${fmtDate(data.finishedAt)} · Generado por ${escapeHtml(data.generatedBy || '—')}</p>
       </div>
@@ -1115,7 +1163,7 @@ function renderSummary() {
     </div>
     <div class="footer-bar">
       ${isHistory ? '' : '<button class="btn-secondary" id="editBtn" style="flex:1;">Seguir contando</button>'}
-      <button class="btn-primary" id="shareBtn" style="flex:1;">📤 Compartir</button>
+      <button class="btn-primary" id="shareBtn" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;">${ICONS.share} Compartir</button>
     </div>
   `;
 
