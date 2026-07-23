@@ -7,7 +7,7 @@ const LOCATIONS = [
   { name: 'BCN 2 - Moon', photo: 'loc-bcn2.jpg' },
   { name: 'Madrid', photo: 'loc-madrid.jpg' },
   { name: 'Málaga 1', photo: 'loc-malaga1.jpg' },
-  { name: 'Fabrica BCN', photo: null },
+  { name: 'Fabrica BCN', photo: 'loc-fabrica.jpg' },
 ];
 
 // Usuarios habilitados para entrar a la app.

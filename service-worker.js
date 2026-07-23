@@ -1,4 +1,4 @@
-const CACHE_NAME = 'inventario-cache-v23';
+const CACHE_NAME = 'inventario-cache-v24';
 const FILES_TO_CACHE = [
   './',
   './index.html',
@@ -16,6 +16,7 @@ const FILES_TO_CACHE = [
   './loc-bcn2.jpg',
   './loc-madrid.jpg',
   './loc-malaga1.jpg',
+  './loc-fabrica.jpg',
 ];
 
 self.addEventListener('install', (event) => {
