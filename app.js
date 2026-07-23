@@ -430,10 +430,9 @@ function renderLocation() {
   }
 
   app.innerHTML = `
-    <div class="topbar">
+    <div class="topbar topbar-home">
       <div>
         <h1>📋 Conteo de Inventario</h1>
-        <div class="sub">Lucciano's · ${escapeHtml(state.currentUser || '')}</div>
       </div>
       <button class="icon-btn" id="changePwBtn" title="Cambiar contraseña">${ICONS.key}</button>
       ${themeToggleButtonHtml()}
@@ -441,8 +440,8 @@ function renderLocation() {
       <button class="icon-btn" id="logoutBtn" title="Cerrar sesión">${ICONS.logout}</button>
     </div>
     <div class="home">
-      <div class="home-hero">
-        <span class="emoji">🍦</span>
+      <div class="home-hero hero-noir">
+        <div class="rule"></div>
         <h2>¿Listo para contar?</h2>
         <p>Elegí una sucursal para empezar</p>
       </div>
