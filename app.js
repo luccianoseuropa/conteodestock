@@ -9,6 +9,8 @@ const STORAGE_KEY = 'inv_current_count';
 const HISTORY_KEY = 'inv_history';
 const SESSION_KEY = 'inv_logged_user';
 const PREV_STOCK_KEY = 'inv_prev_stock'; // registro del último stock enviado, por sucursal + modo
+const PRICE_OVERRIDES_KEY = 'inv_price_overrides'; // { [code]: { price1, price2 } } -- ediciones de precio hechas en este celular
+const PRICE_HISTORY_KEY = 'inv_price_history';       // [{ code, name, oldPrice1, newPrice1, oldPrice2, newPrice2, user, at }]
 
 let state = {
   screen: 'login',     // login | location | mode | changePassword | count | askWaste | summary
@@ -26,6 +28,7 @@ let state = {
   search: '',
   activeCategory: 'Todas',
   viewingHistoryId: null, // when set, summary shows a read-only past count
+  priceSearch: '', // buscador de la pantalla de Precios (independiente del buscador de conteo)
 };
 
 const app = document.getElementById('app');
@@ -109,6 +112,67 @@ function findUser(username) {
 function currentUserCanDelete() {
   const u = findUser(state.currentUser);
   return !!(u && u.canDelete);
+}
+
+function currentUserCanEditPrices() {
+  const u = findUser(state.currentUser);
+  return !!(u && u.canEditPrices);
+}
+
+/* --- Precios (Precio 1: Madrid/Málaga · Precio 2: BCN) ---
+   Los precios "base" viven horneados en products.js (price1/price2 de cada
+   producto), igual que pasa con USERS en config.js. Como la app no tiene
+   servidor, cuando batodesrets edita un precio guardamos un "override" en
+   el localStorage de ESE celular -- se usa al toque en ese dispositivo para
+   valorizar conteos, pero para que TODOS los celulares vean el precio nuevo
+   hay que descargar el products.js actualizado y subirlo a GitHub (como ya
+   se hace con app.js/style.css). Cada cambio queda anotado en un historial,
+   también guardado en este celular. */
+function loadPriceOverrides() {
+  const raw = localStorage.getItem(PRICE_OVERRIDES_KEY);
+  if (!raw) return {};
+  try { return JSON.parse(raw); } catch (e) { return {}; }
+}
+
+function savePriceOverrides(overrides) {
+  localStorage.setItem(PRICE_OVERRIDES_KEY, JSON.stringify(overrides));
+}
+
+function getBaseProduct(code) {
+  return PRODUCTS.find(p => String(p.code) === String(code));
+}
+
+function getEffectivePrice(code, field) {
+  // field: 'price1' | 'price2'
+  const overrides = loadPriceOverrides();
+  const ov = overrides[code];
+  if (ov && ov[field] !== undefined && ov[field] !== null && ov[field] !== '') return Number(ov[field]);
+  const base = getBaseProduct(code);
+  return base && base[field] !== null && base[field] !== undefined ? Number(base[field]) : null;
+}
+
+// Madrid y Málaga usan Precio 1; todas las sucursales de Barcelona (incluida
+// la Fábrica BCN) usan Precio 2.
+function priceFieldForLocation(location) {
+  return /BCN/i.test(location || '') ? 'price2' : 'price1';
+}
+
+function priceLabelForLocation(location) {
+  return priceFieldForLocation(location) === 'price2' ? 'Precio 2 (BCN)' : 'Precio 1 (Madrid / Málaga)';
+}
+
+function loadPriceHistory() {
+  const raw = localStorage.getItem(PRICE_HISTORY_KEY);
+  if (!raw) return [];
+  try { return JSON.parse(raw); } catch (e) { return []; }
+}
+
+function addPriceHistoryEntries(entries) {
+  if (!entries || !entries.length) return;
+  const hist = loadPriceHistory();
+  hist.unshift(...entries);
+  // Guardamos hasta 2000 cambios en este celular para no crecer sin límite.
+  localStorage.setItem(PRICE_HISTORY_KEY, JSON.stringify(hist.slice(0, 2000)));
 }
 
 function loadSession() {
@@ -328,6 +392,8 @@ function render() {
   if (state.screen === 'count') return renderCount();
   if (state.screen === 'askWaste') return renderAskWaste();
   if (state.screen === 'summary') return renderSummary();
+  if (state.screen === 'prices') return renderPrices();
+  if (state.screen === 'priceHistory') return renderPriceHistory();
 }
 
 /* ---------------- Login screen ---------------- */
@@ -434,6 +500,7 @@ function renderLocation() {
       <div>
         <h1>📋 Conteo de Inventario</h1>
       </div>
+      ${currentUserCanEditPrices() ? `<button class="icon-btn" id="pricesBtn" title="Precios">💶</button>` : ''}
       <button class="icon-btn" id="changePwBtn" title="Cambiar contraseña">${ICONS.key}</button>
       ${themeToggleButtonHtml()}
       ${viewToggleButtonHtml()}
@@ -498,6 +565,15 @@ function renderLocation() {
     state.screen = 'changePassword';
     render();
   };
+
+  const pricesBtn = document.getElementById('pricesBtn');
+  if (pricesBtn) {
+    pricesBtn.onclick = () => {
+      state.priceSearch = '';
+      state.screen = 'prices';
+      render();
+    };
+  }
 
   document.getElementById('themeToggleBtn').onclick = toggleTheme;
   document.getElementById('viewToggleBtn').onclick = toggleViewMode;
@@ -1094,6 +1170,15 @@ function renderSummary() {
   const totalStockUnits = stockItems.reduce((sum, p) => sum + Number(p.qty), 0);
   const hasWaste = wasteItems.length > 0;
 
+  const priceField = priceFieldForLocation(data.location);
+  const valorize = (items) => items.reduce((sum, p) => {
+    const price = getEffectivePrice(p.code, priceField);
+    return price === null ? sum : sum + Number(p.qty) * price;
+  }, 0);
+  const fmtMoney = (n) => `${n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+  const totalStockValue = valorize(stockItems);
+  const missingStockPrices = stockItems.filter(p => getEffectivePrice(p.code, priceField) === null).length;
+
   function buildCategorySummary(items) {
     const totals = {}; // key: "categoria||unidad" -> total
     items.forEach(p => {
@@ -1154,6 +1239,11 @@ function renderSummary() {
         <div class="stat-card"><div class="num">${stockItems.length}</div><div class="lbl">Productos (Stock)</div></div>
         <div class="stat-card"><div class="num">${totalStockUnits}</div><div class="lbl">Unidades (Stock)</div></div>
       </div>
+      <div class="stat-card" style="margin-bottom:10px;">
+        <div class="num">${fmtMoney(totalStockValue)}</div>
+        <div class="lbl">Valor total (Stock) · ${priceLabelForLocation(data.location)}</div>
+      </div>
+      ${missingStockPrices > 0 ? `<div class="empty-hint" style="color:var(--danger);">⚠ ${missingStockPrices} producto(s) contado(s) todavía no tienen precio cargado, no se incluyen en el valor total.</div>` : ''}
       <div class="section-label">Stock — resumen por categoría</div>
       ${buildCategorySummaryHtml(stockItems)}
       <div class="section-label">Stock — detalle</div>
@@ -1188,15 +1278,47 @@ async function shareCount(data, stockItems, wasteItems, isHistory) {
   const modeLabel = data.mode === 'semanal' ? 'Semanal' : 'Mensual';
   const filename = `Stock ${modeLabel} - ${loc} - ${dateStr}.xlsx`;
 
-  const header = ['Código', 'Producto', 'Categoría', 'Unidad de medida', 'Cantidad contada', 'Sucursal'];
+  // Valorización: Madrid/Málaga usan Precio 1, las sucursales de BCN (incluida
+  // la Fábrica BCN) usan Precio 2. Si a algún producto todavía no se le cargó
+  // precio, se deja en blanco y no suma al total (en vez de inventar un 0).
+  const priceField = priceFieldForLocation(data.location);
+  const priceLabel = priceLabelForLocation(data.location);
+  const unitPriceOf = (p) => getEffectivePrice(p.code, priceField);
+
+  const header = ['Código', 'Producto', 'Categoría', 'Unidad de medida', 'Cantidad contada', 'Precio unitario (€)', 'Subtotal (€)', 'Sucursal'];
   const wasteHeader = [...header, 'Motivo'];
-  const toRows = (items) => items.map(p => [p.code, p.name, p.category, p.unit, Number(p.qty), data.location]);
-  const toWasteRows = (items) => items.map(p => [p.code, p.name, p.category, p.unit, Number(p.qty), data.location, p.note || '']);
-  const infoRows = (sheetLabel) => [
-    [`Generado por: ${data.generatedBy || '—'}`],
-    [`Sucursal: ${data.location}    Conteo: ${modeLabel}    Fecha: ${fmtDate(data.finishedAt)}    Pestaña: ${sheetLabel}`],
-    [],
-  ];
+  const toRows = (items) => items.map(p => {
+    const price = unitPriceOf(p);
+    const qty = Number(p.qty);
+    return [p.code, p.name, p.category, p.unit, qty, price === null ? '' : price, price === null ? '' : Math.round(qty * price * 100) / 100, data.location];
+  });
+  const toWasteRows = (items) => items.map(p => {
+    const price = unitPriceOf(p);
+    const qty = Number(p.qty);
+    return [p.code, p.name, p.category, p.unit, qty, price === null ? '' : price, price === null ? '' : Math.round(qty * price * 100) / 100, data.location, p.note || ''];
+  });
+  const totalValorizado = (items) => items.reduce((sum, p) => {
+    const price = unitPriceOf(p);
+    return price === null ? sum : sum + Number(p.qty) * price;
+  }, 0);
+  const totalRow = (items, ncols) => {
+    const row = new Array(ncols).fill('');
+    row[4] = 'TOTAL';
+    row[6] = Math.round(totalValorizado(items) * 100) / 100;
+    return row;
+  };
+  const missingPriceCount = (items) => items.filter(p => unitPriceOf(p) === null).length;
+  const infoRows = (sheetLabel, items) => {
+    const rows = [
+      [`Generado por: ${data.generatedBy || '—'}`],
+      [`Sucursal: ${data.location}    Conteo: ${modeLabel}    Fecha: ${fmtDate(data.finishedAt)}    Pestaña: ${sheetLabel}`],
+      [`Valorizado con: ${priceLabel}`],
+    ];
+    const missing = missingPriceCount(items);
+    if (missing > 0) rows.push([`⚠ ${missing} producto(s) sin precio cargado (no se incluyen en el total)`]);
+    rows.push([]);
+    return rows;
+  };
 
   let shared = false;
 
@@ -1208,13 +1330,13 @@ async function shareCount(data, stockItems, wasteItems, isHistory) {
   try {
     const wb = XLSX.utils.book_new();
 
-    const wsStock = XLSX.utils.aoa_to_sheet([...infoRows('Stock'), header, ...toRows(stockItems)]);
-    wsStock['!cols'] = [{ wch: 9 }, { wch: 34 }, { wch: 24 }, { wch: 14 }, { wch: 16 }, { wch: 16 }];
+    const wsStock = XLSX.utils.aoa_to_sheet([...infoRows('Stock', stockItems), header, ...toRows(stockItems), totalRow(stockItems, header.length)]);
+    wsStock['!cols'] = [{ wch: 9 }, { wch: 34 }, { wch: 24 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 14 }, { wch: 16 }];
     XLSX.utils.book_append_sheet(wb, wsStock, 'Stock');
 
     if (wasteItems.length > 0) {
-      const wsWaste = XLSX.utils.aoa_to_sheet([...infoRows('Desperdicio'), wasteHeader, ...toWasteRows(wasteItems)]);
-      wsWaste['!cols'] = [{ wch: 9 }, { wch: 34 }, { wch: 24 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 28 }];
+      const wsWaste = XLSX.utils.aoa_to_sheet([...infoRows('Desperdicio', wasteItems), wasteHeader, ...toWasteRows(wasteItems), totalRow(wasteItems, wasteHeader.length)]);
+      wsWaste['!cols'] = [{ wch: 9 }, { wch: 34 }, { wch: 24 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 14 }, { wch: 16 }, { wch: 28 }];
       XLSX.utils.book_append_sheet(wb, wsWaste, 'Desperdicio');
     }
 
@@ -1277,6 +1399,278 @@ function finalizeIfNeeded(data) {
   // la próxima vez que se haga un conteo del mismo tipo en esta sucursal.
   savePrevStock(data.location, state.mode, data.stockCounts, data.finishedAt, data.generatedBy);
   clearCurrent();
+}
+
+/* ---------------- Precios (solo batodesrets) ----------------
+   Pantalla para ver y editar Precio 1 (Madrid/Málaga) y Precio 2 (BCN) de
+   cada producto. Los cambios se guardan como "override" en este celular y
+   quedan anotados en un historial (también local). Para que el precio
+   nuevo llegue a TODOS los celulares hay que descargar el products.js
+   actualizado desde acá y subirlo a GitHub. */
+
+// Buffer en memoria con lo que se va tipeando en los inputs de precio,
+// independiente del filtro de búsqueda (así no se pierde nada al filtrar).
+let priceEditsBuffer = {};
+
+function parsePriceInput(value) {
+  if (value === null || value === undefined) return undefined; // sin cambios
+  const trimmed = String(value).trim();
+  if (trimmed === '') return undefined; // vacío = no tocar ese precio
+  const n = parseFloat(trimmed.replace(',', '.'));
+  if (isNaN(n) || n < 0) return undefined;
+  return Math.round(n * 1000) / 1000;
+}
+
+function getPricesFilteredProducts() {
+  const term = state.priceSearch.trim().toLowerCase();
+  if (!term) return PRODUCTS;
+  return PRODUCTS.filter(p => p.name.toLowerCase().includes(term) || String(p.code).includes(term));
+}
+
+function buildPriceListHtml(filtered) {
+  if (filtered.length === 0) return `<div class="no-results">No se encontraron productos.</div>`;
+  const grouped = {};
+  filtered.forEach(p => { (grouped[p.category] = grouped[p.category] || []).push(p); });
+  let html = '';
+  CATEGORIES.forEach(cat => {
+    if (!grouped[cat]) return;
+    html += `<div class="cat-heading"><span class="cat-dot" style="--cat-color:${categoryColor(cat)}"></span>${escapeHtml(cat)}</div>`;
+    grouped[cat].forEach(p => {
+      const buffered = priceEditsBuffer[p.code] || {};
+      const eff1 = getEffectivePrice(p.code, 'price1');
+      const eff2 = getEffectivePrice(p.code, 'price2');
+      const val1 = buffered.price1 !== undefined ? buffered.price1 : (eff1 !== null ? formatQty(eff1) : '');
+      const val2 = buffered.price2 !== undefined ? buffered.price2 : (eff2 !== null ? formatQty(eff2) : '');
+      const missingBoth = eff1 === null && eff2 === null;
+      html += `
+        <div class="product-row" style="--cat-color:${categoryColor(p.category)}">
+          <div class="product-info">
+            <div class="code">#${p.code} · ${escapeHtml(p.unit)}</div>
+            <div class="name">${escapeHtml(p.name)}</div>
+            ${missingBoth ? `<span class="prev-hint" style="color:var(--danger);">Sin precio cargado</span>` : ''}
+          </div>
+        </div>
+        <div class="helado-controls">
+          <div class="helado-field">
+            <span class="helado-label">Precio 1 (Madrid/Málaga)</span>
+            <input type="text" inputmode="decimal" class="helado-input" data-price1="${p.code}" value="${escapeHtml(String(val1))}" placeholder="0,00">
+          </div>
+          <div class="helado-field">
+            <span class="helado-label">Precio 2 (BCN)</span>
+            <input type="text" inputmode="decimal" class="helado-input" data-price2="${p.code}" value="${escapeHtml(String(val2))}" placeholder="0,00">
+          </div>
+        </div>`;
+    });
+  });
+  return html;
+}
+
+function attachPriceRowHandlers() {
+  document.querySelectorAll('[data-price1]').forEach(inp => {
+    inp.oninput = (e) => {
+      const code = inp.getAttribute('data-price1');
+      priceEditsBuffer[code] = priceEditsBuffer[code] || {};
+      priceEditsBuffer[code].price1 = e.target.value;
+    };
+  });
+  document.querySelectorAll('[data-price2]').forEach(inp => {
+    inp.oninput = (e) => {
+      const code = inp.getAttribute('data-price2');
+      priceEditsBuffer[code] = priceEditsBuffer[code] || {};
+      priceEditsBuffer[code].price2 = e.target.value;
+    };
+  });
+}
+
+function renderPricesListOnly() {
+  const listEl = document.querySelector('.product-list');
+  if (!listEl) return;
+  listEl.innerHTML = buildPriceListHtml(getPricesFilteredProducts());
+  attachPriceRowHandlers();
+}
+
+function renderPrices() {
+  if (!currentUserCanEditPrices()) { state.screen = 'location'; render(); return; }
+  priceEditsBuffer = {};
+  const missing = PRODUCTS.filter(p => getEffectivePrice(p.code, 'price1') === null && getEffectivePrice(p.code, 'price2') === null).length;
+
+  app.innerHTML = `
+    <div class="topbar">
+      <button class="icon-btn" id="backBtn">${ICONS.chevronLeft}</button>
+      <div style="text-align:center;">
+        <h1>Precios</h1>
+        <div class="sub">Precio 1 = Madrid/Málaga · Precio 2 = BCN</div>
+      </div>
+      <button class="icon-btn" id="priceHistoryBtn" title="Historial de cambios">🕘</button>
+    </div>
+    <div class="count-controls">
+      <div class="search-wrap">
+        <span class="icon">${ICONS.search}</span>
+        <input type="text" id="priceSearchInput" placeholder="Buscar producto o código..." value="${escapeHtml(state.priceSearch)}">
+      </div>
+      ${missing > 0 ? `<div class="empty-hint" style="color:var(--danger);">⚠ ${missing} producto(s) sin ningún precio cargado todavía.</div>` : ''}
+    </div>
+    <div class="product-list">${buildPriceListHtml(getPricesFilteredProducts())}</div>
+    <div class="footer-bar">
+      <button class="btn-secondary" id="downloadProductsBtn" style="flex:1;">Descargar products.js</button>
+      <button class="btn-primary" id="saveAllPricesBtn" style="flex:1;">Guardar cambios</button>
+    </div>
+  `;
+
+  document.getElementById('backBtn').onclick = () => { state.screen = 'location'; render(); };
+  document.getElementById('priceHistoryBtn').onclick = () => { state.screen = 'priceHistory'; render(); };
+
+  const searchInput = document.getElementById('priceSearchInput');
+  searchInput.oninput = (e) => {
+    state.priceSearch = e.target.value;
+    renderPricesListOnly();
+  };
+
+  attachPriceRowHandlers();
+
+  document.getElementById('downloadProductsBtn').onclick = () => downloadUpdatedProductsJs();
+  document.getElementById('saveAllPricesBtn').onclick = () => saveAllPriceEdits();
+}
+
+function saveAllPriceEdits() {
+  const overrides = loadPriceOverrides();
+  const historyEntries = [];
+  let changedCount = 0;
+
+  Object.keys(priceEditsBuffer).forEach(codeStr => {
+    const code = Number(codeStr);
+    const edit = priceEditsBuffer[codeStr];
+    const base = getBaseProduct(code);
+    if (!base) return;
+    ['price1', 'price2'].forEach(field => {
+      if (!(field in edit)) return;
+      const parsed = parsePriceInput(edit[field]);
+      if (parsed === undefined) return;
+      const oldVal = getEffectivePrice(code, field);
+      if (oldVal !== null && Math.abs(oldVal - parsed) < 0.0005) return; // no cambió en los hechos
+      if (!overrides[code]) overrides[code] = {};
+      overrides[code][field] = parsed;
+      changedCount++;
+      historyEntries.push({
+        code,
+        name: base.name,
+        field,
+        oldValue: oldVal,
+        newValue: parsed,
+        user: state.currentUser,
+        at: new Date().toISOString(),
+      });
+    });
+  });
+
+  if (changedCount === 0) {
+    toast('No hay cambios de precio para guardar.');
+    return;
+  }
+
+  savePriceOverrides(overrides);
+  addPriceHistoryEntries(historyEntries);
+  priceEditsBuffer = {};
+  toast(`Se guardaron ${changedCount} cambio(s) en este celular. No te olvides de descargar products.js y subirlo a GitHub para que lleguen a todos.`);
+  renderPrices();
+}
+
+// Reconstruye products.js completo (mismo formato que el original) con los
+// precios efectivos actuales (base + overrides de este celular), listo para
+// subir a GitHub y que el precio nuevo llegue a todos los celulares.
+function buildProductsJsFileText() {
+  const overrides = loadPriceOverrides();
+  const autogenCount = PRODUCTS.filter(p => p.code >= 90001).length;
+  const lines = [];
+  lines.push('// Listado de productos - generado desde Listado_productos_Stock.xlsx');
+  lines.push('// Pestañas usadas: Productos terminados, Pasteleria, VARIOS');
+  lines.push(`// Total productos: ${PRODUCTS.length}  |  Códigos autogenerados (90001+): ${autogenCount}`);
+  lines.push('//');
+  lines.push('// price1 = precio de venta en Madrid y Málaga · price2 = precio de venta en BCN');
+  lines.push(`// products.js actualizado desde la pantalla de Precios por ${state.currentUser || '—'} · ${fmtDate(new Date().toISOString())}`);
+  lines.push('const PRODUCTS = [');
+  PRODUCTS.forEach(p => {
+    const ov = overrides[p.code] || {};
+    const price1 = ov.price1 !== undefined ? ov.price1 : p.price1;
+    const price2 = ov.price2 !== undefined ? ov.price2 : p.price2;
+    const nameEsc = String(p.name).replace(/'/g, "\\'");
+    const avgW = (p.avgWeight === null || p.avgWeight === undefined) ? 'null' : p.avgWeight;
+    const p1s = (price1 === null || price1 === undefined) ? 'null' : price1;
+    const p2s = (price2 === null || price2 === undefined) ? 'null' : price2;
+    lines.push(`  { code: ${p.code}, name: '${nameEsc}', category: '${p.category}', unit: '${p.unit}', avgWeight: ${avgW}, price1: ${p1s}, price2: ${p2s} },`);
+  });
+  lines.push('];');
+  lines.push('');
+  lines.push('const CATEGORIES = [');
+  CATEGORIES.forEach(c => lines.push(`  '${String(c).replace(/'/g, "\\'")}',`));
+  lines.push('];');
+  lines.push('');
+  lines.push("if (typeof module !== 'undefined') { module.exports = { PRODUCTS, CATEGORIES }; }");
+  return lines.join('\n');
+}
+
+function downloadUpdatedProductsJs() {
+  const text = buildProductsJsFileText();
+  const blob = new Blob([text], { type: 'text/javascript' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'products.js';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  toast('Se descargó products.js. Subilo a GitHub (upload/main) para que el precio nuevo llegue a todos los celulares.');
+}
+
+function renderPriceHistory() {
+  if (!currentUserCanEditPrices()) { state.screen = 'location'; render(); return; }
+  const hist = loadPriceHistory();
+  const rows = hist.map(h => `
+    <div class="history-item">
+      <div class="info">
+        <b>${escapeHtml(h.name)} <span style="color:var(--ink-soft);font-weight:400;">#${h.code}</span></b>
+        <span>${h.field === 'price1' ? 'Precio 1 (Madrid/Málaga)' : 'Precio 2 (BCN)'} · ${h.oldValue === null || h.oldValue === undefined ? 'sin precio' : formatQty(h.oldValue)} → <b>${formatQty(h.newValue)}</b> · ${escapeHtml(h.user || '—')} · ${fmtDate(h.at)}</span>
+      </div>
+    </div>
+  `).join('');
+
+  app.innerHTML = `
+    <div class="topbar">
+      <button class="icon-btn" id="backBtn">${ICONS.chevronLeft}</button>
+      <h1>Historial de precios</h1>
+      <span style="width:32px"></span>
+    </div>
+    <div class="home">
+      ${hist.length ? `<div class="history-list">${rows}</div>` : `<div class="empty-hint">Todavía no se registraron cambios de precio en este celular.</div>`}
+    </div>
+    <div class="footer-bar">
+      <button class="btn-primary" id="downloadHistoryBtn" style="flex:1;" ${hist.length ? '' : 'disabled'}>Descargar historial (Excel)</button>
+    </div>
+  `;
+
+  document.getElementById('backBtn').onclick = () => { state.screen = 'prices'; render(); };
+  const dlBtn = document.getElementById('downloadHistoryBtn');
+  if (hist.length) dlBtn.onclick = () => downloadPriceHistoryExcel(hist);
+}
+
+function downloadPriceHistoryExcel(hist) {
+  if (typeof XLSX === 'undefined') {
+    toast('La app todavía está terminando de cargar. Esperá unos segundos y probá de nuevo.');
+    return;
+  }
+  const header = ['Fecha', 'Usuario', 'Código', 'Producto', 'Lista de precio', 'Valor anterior', 'Valor nuevo'];
+  const rows = hist.map(h => [
+    fmtDate(h.at), h.user || '—', h.code, h.name,
+    h.field === 'price1' ? 'Precio 1 (Madrid/Málaga)' : 'Precio 2 (BCN)',
+    (h.oldValue === null || h.oldValue === undefined) ? '' : h.oldValue,
+    h.newValue,
+  ]);
+  const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+  ws['!cols'] = [{ wch: 18 }, { wch: 14 }, { wch: 9 }, { wch: 34 }, { wch: 24 }, { wch: 14 }, { wch: 14 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Historial de precios');
+  XLSX.writeFile(wb, `Historial de precios - ${fmtDateShort(new Date().toISOString())}.xlsx`);
 }
 
 /* ---------------- Init ---------------- */

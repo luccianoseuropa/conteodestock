@@ -23,14 +23,17 @@ const LOCATIONS = [
 // con autenticación real.
 //
 // Cambiá estas contraseñas antes de subir la app a producción.
+// canEditPrices: true = puede entrar a la pantalla de Precios (ver y editar
+// Precio 1 / Precio 2 de cada producto, y descargar el products.js actualizado
+// + el historial de cambios). Por ahora solo "batodesrets", tal como pediste.
 const USERS = [
-  { username: 'batodesrets', password: '100393', canDelete: true },
-  { username: 'bautista', password: '100393', canDelete: false },
-  { username: 'agostina', password: '123456', canDelete: false },
-  { username: 'manuel', password: '123456', canDelete: false },
-  { username: 'simon', password: '123456', canDelete: false },
-  { username: 'julian', password: '123456', canDelete: false },
-  { username: 'malaga', password: '123456', canDelete: false },
+  { username: 'batodesrets', password: '100393', canDelete: true, canEditPrices: true },
+  { username: 'bautista', password: '100393', canDelete: false, canEditPrices: false },
+  { username: 'agostina', password: '123456', canDelete: false, canEditPrices: false },
+  { username: 'manuel', password: '123456', canDelete: false, canEditPrices: false },
+  { username: 'simon', password: '123456', canDelete: false, canEditPrices: false },
+  { username: 'julian', password: '123456', canDelete: false, canEditPrices: false },
+  { username: 'malaga', password: '123456', canDelete: false, canEditPrices: false },
 ];
 
 if (typeof module !== 'undefined') { module.exports = { LOCATIONS, USERS }; }
